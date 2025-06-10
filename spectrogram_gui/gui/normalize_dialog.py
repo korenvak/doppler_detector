@@ -32,10 +32,9 @@ class NormalizeDialog(QDialog):
     def apply_normalize(self):
         selected = self.main_window.canvas.selected_range
         if not selected:
-            QMessageBox.warning(self, "No Range", "Please select a time range first.")
-            return
-
-        t0, t1 = selected
+            t0, t1 = self.main_window.canvas.times[0], self.main_window.canvas.times[-1]
+        else:
+            t0, t1 = selected
 
         # Backup for undo
         wave = self.main_window.audio_player.get_waveform_copy()
@@ -67,7 +66,11 @@ class NormalizeDialog(QDialog):
         self.main_window.audio_player.replace_waveform(new_wave)
 
         # Recompute spectrogram
-        freqs, times, Sxx, start_time = compute_spectrogram(new_wave, sr, "", params=self.main_window.spectrogram_params)
-        self.main_window.canvas.plot_spectrogram(freqs, times, Sxx, start_time)
+        freqs, times, Sxx, _ = compute_spectrogram(
+            new_wave, sr, "", params=self.main_window.spectrogram_params
+        )
+        self.main_window.canvas.plot_spectrogram(
+            freqs, times, Sxx, self.main_window.canvas.start_time
+        )
 
         self.accept()

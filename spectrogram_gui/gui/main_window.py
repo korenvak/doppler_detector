@@ -539,9 +539,7 @@ class MainWindow(QMainWindow):
 
 
     def open_filter_dialog(self, filter_type="bandpass"):
-        if self.canvas.selected_range is None:
-            QMessageBox.warning(self, "No Selection", "Please select a time range on the spectrogram first.")
-            return
+        # allow filtering entire spectrogram if no range selected
 
         wave, sr = self.audio_player.get_waveform_copy(return_sr=True)
         if wave is None or sr is None:
@@ -566,9 +564,6 @@ class MainWindow(QMainWindow):
 
 
     def open_fft_dialog(self):
-        if self.canvas.selected_range is None:
-            QMessageBox.warning(self, "No Selection", "Please select a time range on the spectrogram first.")
-            return
 
         wave, sr = self.audio_player.get_waveform_copy(return_sr=True)
         if wave is None or sr is None:
@@ -580,10 +575,7 @@ class MainWindow(QMainWindow):
 
 
     def open_gain_dialog(self):
-        if self.canvas.selected_range is None:
-            QMessageBox.warning(self, "No Selection", "Please select a time range on the spectrogram first.")
-            return
-
+        # apply gain even if no range selected
         wave, sr = self.audio_player.get_waveform_copy(return_sr=True)
         if wave is None or sr is None:
             QMessageBox.warning(self, "No Audio", "No audio loaded.")

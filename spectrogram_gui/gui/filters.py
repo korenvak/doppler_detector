@@ -157,12 +157,13 @@ class CombinedFilterDialog(QDialog):
         # 1) selection
         sel = self.main.canvas.selected_range
         if sel is None:
-            QMessageBox.warning(self, "No Selection", "Please select a time-range first.")
-            return
+            # whole spectrogram if nothing selected
+            t0, t1 = self.main.canvas.times[0], self.main.canvas.times[-1]
+        else:
+            t0, t1 = sel
 
         # 2) extract segment
         wave, sr = self.main.audio_player.get_waveform_copy(return_sr=True)
-        t0, t1 = sel
         total = len(wave) / sr
         i0 = int((t0 / total) * len(wave))
         i1 = int((t1 / total) * len(wave))
@@ -196,13 +197,13 @@ class CombinedFilterDialog(QDialog):
             if len(out) < order:
                 QMessageBox.warning(self, "Too Short", "Segment shorter than ALE order.")
                 return
-            # — pass delay explicitly too! —
+            # basic ALE with fixed delay of 1 sample
             out = apply_ale(
-                self.original_waveform,
-                order=self.ale_order_spin.value(),
-                delay=self.ale_delay_spin.value(),
-                mu=self.ale_mu_spin.value(),
-                forgetting_factor=self.ale_ff_spin.value()
+                out,
+                order=order,
+                delay=1,
+                mu=0.1,
+                forgetting_factor=self.ale_spin.value()
             )
         if self.wiener_chk.isChecked():
             out = apply_wiener(out, noise_db=self.wiener_spin.value())
@@ -212,10 +213,9 @@ class CombinedFilterDialog(QDialog):
         new_wave[i0:i1] = out
         self.main.audio_player.replace_waveform(new_wave)
 
-        freqs, times, Sxx, start = compute_spectrogram(
-            new_wave, sr, self.main.canvas.start_time,
-            params=self.main.spectrogram_params
+        freqs, times, Sxx, _ = compute_spectrogram(
+            new_wave, sr, "", params=self.main.spectrogram_params
         )
-        self.main.canvas.plot_spectrogram(freqs, times, Sxx, start)
+        self.main.canvas.plot_spectrogram(freqs, times, Sxx, self.main.canvas.start_time)
 
         self.accept()

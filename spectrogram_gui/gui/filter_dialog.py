@@ -47,11 +47,12 @@ class FilterDialog(QDialog):
 
         sel = self.main.canvas.selected_range
         if sel is None:
-            QMessageBox.warning(self, "No Selection", "Select a time range first.")
-            return
+            # apply to entire duration when no range selected
+            t0, t1 = self.main.canvas.times[0], self.main.canvas.times[-1]
+        else:
+            t0, t1 = sel
 
         wave, sr = self.main.audio_player.get_waveform_copy(return_sr=True)
-        t0, t1 = sel
         total = len(wave)/sr
         i0, i1 = int((t0/total)*len(wave)), int((t1/total)*len(wave))
         if i1 <= i0:
@@ -70,8 +71,8 @@ class FilterDialog(QDialog):
         self.main.audio_player.replace_waveform(new_wave)
 
         # replot
-        freqs, times, Sxx, start = compute_spectrogram(
-            new_wave, sr, self.main.canvas.start_time, params=self.main.spectrogram_params
+        freqs, times, Sxx, _ = compute_spectrogram(
+            new_wave, sr, "", params=self.main.spectrogram_params
         )
-        self.main.canvas.plot_spectrogram(freqs, times, Sxx, start)
+        self.main.canvas.plot_spectrogram(freqs, times, Sxx, self.main.canvas.start_time)
         self.accept()
