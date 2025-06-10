@@ -5,12 +5,32 @@ from scipy.signal import find_peaks
 # use your spectrogram and audio‐loading utils instead of soundfile + scipy.spectrogram
 from spectrogram_gui.utils.audio_utils import load_audio_with_filters
 from spectrogram_gui.utils.spectrogram_utils import compute_spectrogram as sg_compute_spec
+from spectrogram_gui.utils.filter_utils import (
+    apply_nlms,
+    apply_ale,
+    apply_wiener,
+)
 
 # Default frequency range (Hz)
 DEFAULT_FREQ_MIN = 50
+
 DEFAULT_FREQ_MAX = 1500
 
-class DopplerDetector:
+
+class Detector:
+    """Simple detector base class"""
+
+    def load_audio(self, filepath):
+        raise NotImplementedError
+
+    def compute_spectrogram(self, y, sr, filepath):
+        raise NotImplementedError
+
+    def run_detection(self, filepath):
+        raise NotImplementedError
+
+
+class DopplerDetector(Detector):
     def __init__(
         self,
         freq_min=DEFAULT_FREQ_MIN,
@@ -241,3 +261,40 @@ class DopplerDetector:
                 continue
             final.append(tr)
         return final
+
+
+class AdaptiveFilterDetector(DopplerDetector):
+    """Doppler detector with extra adaptive filtering"""
+
+    def __init__(
+        self,
+        *args,
+        nlms_mu=0.01,
+        ale_delay=1,
+        ale_mu=0.1,
+        ale_lambda=0.995,
+        wiener_noise_db=-20,
+        **kwargs,
+    ):
+        super().__init__(*args, **kwargs)
+        self.nlms_mu = nlms_mu
+        self.ale_delay = ale_delay
+        self.ale_mu = ale_mu
+        self.ale_lambda = ale_lambda
+        self.wiener_noise_db = wiener_noise_db
+
+    def load_audio(self, filepath):
+        y, sr = super().load_audio(filepath)
+        order = min(32, len(y))
+        if order > 1:
+            y = apply_nlms(y, mu=self.nlms_mu, filter_order=order)
+        if order > self.ale_delay:
+            y = apply_ale(
+                y,
+                delay=self.ale_delay,
+                mu=self.ale_mu,
+                forgetting_factor=self.ale_lambda,
+                filter_order=order,
+            )
+        y = apply_wiener(y, noise_db=self.wiener_noise_db)
+        return y, sr
