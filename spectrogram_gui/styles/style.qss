@@ -1,0 +1,262 @@
+/* ======================================= */
+/*   Dark Theme QSS Stylesheet (Windows)   */
+/*   Pure Black Background + Blue Buttons  */
+/* ======================================= */
+
+/* 1) General styling for all widgets */
+QWidget {
+    background-color: #000000;
+    color: #ffffff;  /* לבן בהיר במיוחד */
+    font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+    font-size: 12px;
+}
+
+/* 2) QPushButton / QToolButton styling:
+      - Semi‐transparent DodgerBlue background
+      - לבן בהיר לטקסט
+      - קצוות מעוגלים
+      - הזזה קלה בהיר/כהה ב־hover ו־pressed
+*/
+QPushButton, QToolButton {
+    color: #ffffff;
+    font-weight: 500;
+    font-size: 13px;
+    border: none;
+    border-radius: 8px;
+    padding: 8px 16px;
+    background-color: rgba(30, 144, 255, 180);  /* DodgerBlue 70% */
+}
+
+QPushButton:hover, QToolButton:hover {
+    background-color: rgba(30, 144, 255, 230);
+    /* מעט פחות שקיפות ב־hover */
+    box-shadow: 0px 2px 8px rgba(30, 144, 255, 120);
+}
+
+QPushButton:pressed, QToolButton:pressed {
+    background-color: rgba(25, 120, 220, 210);
+}
+
+QPushButton:disabled, QToolButton:disabled {
+    color: #888888;
+    background-color: rgba(30, 144, 255, 80);
+}
+
+/* 3) QListWidget (file list) styling:
+      - רקע שחור מלא
+      - גבול כהה
+      - גופן גדל יותר ובמשקל חזק (semibold)
+      - מרווח שורות
+*/
+QListWidget {
+    background-color: #000000;
+    border: 1px solid #222222;
+    border-radius: 6px;
+    font-family: "Segoe UI Semibold", Tahoma, Geneva, Verdana, sans-serif;
+    font-size: 14px;
+    font-weight: 600;
+}
+
+QListWidget::item {
+    padding: 8px;
+    margin: 2px 0;
+    color: #ffffff;
+}
+
+QListWidget::item:selected {
+    background-color: rgba(30, 144, 255, 160);
+    color: #ffffff;
+}
+
+QListWidget::item:hover {
+    background-color: rgba(30, 144, 255, 120);
+}
+
+/* 4) QLabel styling */
+QLabel {
+    color: #ffffff;
+}
+
+/*   4a) Hover‐info label (time/freq/amp) בפינה היושבי־ימנית */
+QLabel#hoverInfo {
+    color: #ffffff;
+    font-size: 11px;
+}
+
+/*   4b) “Open Files” heading מעל רשימת הקבצים */
+QLabel#fileListHeading {
+    color: #ffffff;
+    font-family: "Segoe UI Semibold", Tahoma, Geneva, Verdana, sans-serif;
+    font-size: 16px;
+    font-weight: 600;
+    margin-bottom: 2px;
+}
+
+/*   4c) תת־כותרת קטנה */
+QLabel#fileListSubheading {
+    color: #cccccc;            /* אפור בהיר */
+    font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+    font-size: 10px;
+    margin-bottom: 8px;
+}
+
+/* 5) QFrame#card: “כרטיסים” עם רקע כהה מאוד חצי‐שקוף */
+QFrame#card {
+    background-color: rgba(20, 20, 20, 220);  /* כמעט שחור, חצי־שקוף */
+    border-radius: 10px;
+}
+
+/*    אם ל־QFrame#card יש property hasShadow="true", נוסיף שוליים */
+QFrame#card[hasShadow="true"] {
+    margin: 6px;
+}
+
+/* 6) QSplitter handle styling */
+QSplitter::handle {
+    background-color: #111111;
+}
+
+QSplitter::handle:hover {
+    background-color: #222222;
+}
+
+/* 7) QScrollBar (vertical) styling */
+QScrollBar:vertical {
+    background: #0a0a0a;
+    width: 10px;
+    margin: 0px;
+}
+
+QScrollBar::handle:vertical {
+    background: #444444;
+    min-height: 20px;
+    border-radius: 5px;
+}
+
+QScrollBar::handle:vertical:hover {
+    background: #555555;
+}
+
+QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {
+    background: none;
+    height: 0px;
+}
+
+/* 8) QScrollBar (horizontal) styling */
+QScrollBar:horizontal {
+    background: #0a0a0a;
+    height: 10px;
+    margin: 0px;
+}
+
+QScrollBar::handle:horizontal {
+    background: #444444;
+    min-width: 20px;
+    border-radius: 5px;
+}
+
+QScrollBar::handle:horizontal:hover {
+    background: #555555;
+}
+
+QScrollBar::add-line:horizontal, QScrollBar::sub-line:horizontal {
+    background: none;
+    width: 0px;
+}
+
+/* 9) QMenu / תפריטי הקשר */
+QMenu {
+    background-color: #111111;
+    border: 1px solid #222222;
+}
+
+QMenu::item {
+    padding: 6px 20px;
+    background-color: transparent;
+    color: #e0e0e0;
+}
+
+QMenu::item:selected {
+    background-color: rgba(30, 144, 255, 160);
+    color: #ffffff;
+}
+
+/* 10) QDialog styling */
+QDialog {
+    background-color: #000000;
+    border: 1px solid #222222;
+    border-radius: 6px;
+}
+
+/* 11) QTableView (בתוך דיאלוגים) */
+QTableView {
+    background-color: #111111;
+    gridline-color: #222222;
+    selection-background-color: rgba(30, 144, 255, 160);
+    selection-color: #ffffff;
+    alternate-background-color: #1a1a1a;
+}
+
+QHeaderView::section {
+    background-color: #1a1a1a;
+    padding: 4px;
+    border: 1px solid #222222;
+    color: #e0e0e0;
+}
+
+/* 12) QLineEdit styling */
+QLineEdit {
+    background-color: #111111;
+    border: 1px solid #222222;
+    border-radius: 4px;
+    padding: 4px;
+    color: #e0e0e0;
+}
+
+QLineEdit:focus {
+    border: 1px solid #1e90ff;  /* DodgerBlue focus */
+}
+
+/* 13) QComboBox styling */
+QComboBox {
+    background-color: #111111;
+    border: 1px solid #222222;
+    border-radius: 4px;
+    padding: 4px;
+    color: #e0e0e0;
+}
+
+QComboBox::drop-down {
+    subcontrol-origin: padding;
+    subcontrol-position: top right;
+    width: 20px;
+    border-left: 1px solid #222222;
+}
+
+QComboBox::down-arrow {
+    image: none;
+    border: none;
+    width: 0;
+}
+
+/* 14) QTextEdit / QPlainTextEdit styling */
+QPlainTextEdit, QTextEdit {
+    background-color: #000000;
+    color: #e0e0e0;
+    border: 1px solid #222222;
+    border-radius: 4px;
+    selection-background-color: rgba(30, 144, 255, 160);
+}
+
+/* 15) QToolTip styling */
+QToolTip {
+    background-color: #222222;
+    color: #ffffff;
+    border: 1px solid #333333;
+    border-radius: 4px;
+    padding: 4px;
+}
+
+/* ================================================================= */
+/* End of style.qss                                                   */
+/* ================================================================= */
