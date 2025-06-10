@@ -321,14 +321,19 @@ class MainWindow(QMainWindow):
                 self.detector.times    = times
                 self.detector.Sxx_filt = Sxx
 
-                # just do peaks/tracking/merging
-                peaks  = self.detector.detect_peaks_per_frame()
-                tracks = self.detector.track_peaks_over_time(peaks)
-                raw_tracks = self.detector.merge_tracks(tracks)
+                if self.detector.detection_method == "threshold":
+                    tracks = self.detector.detect_tracks_by_threshold()
+                    raw_tracks = self.detector.merge_tracks(tracks)
+                else:
+                    peaks  = self.detector.detect_peaks_per_frame()
+                    tracks = self.detector.track_peaks_over_time(peaks)
+                    raw_tracks = self.detector.merge_tracks(tracks)
 
             else:
-                # full original pipeline on disk file
-                raw_tracks = self.detector.run_detection(self.current_file)
+                if self.detector.detection_method == "threshold":
+                    raw_tracks = self.detector.run_threshold_detection(self.current_file)
+                else:
+                    raw_tracks = self.detector.run_detection(self.current_file)
 
             # 3) Convert index‐based tracks → time/freq arrays
             processed = []

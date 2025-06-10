@@ -2,7 +2,7 @@
 
 from PyQt5.QtWidgets import (
     QDialog, QFormLayout, QSpinBox, QDoubleSpinBox,
-    QDialogButtonBox, QHBoxLayout
+    QDialogButtonBox, QHBoxLayout, QComboBox
 )
 from PyQt5.QtCore import Qt
 
@@ -13,6 +13,12 @@ class DetectorParamsDialog(QDialog):
         self.detector = detector
 
         layout = QFormLayout(self)
+
+        self.method_box = QComboBox()
+        self.method_box.addItems(["Peaks", "Threshold"])
+        if getattr(detector, "detection_method", "peaks") == "threshold":
+            self.method_box.setCurrentIndex(1)
+        layout.addRow("Detection Method:", self.method_box)
 
 
 
@@ -162,4 +168,5 @@ class DetectorParamsDialog(QDialog):
         d.merge_max_freq_diff_hz = self.merge_freq_diff_spin.value()
         d.smooth_sigma = self.smooth_sigma_spin.value()
         d.median_filter_size = (self.median_h_spin.value(), self.median_w_spin.value())
+        d.detection_method = "threshold" if self.method_box.currentIndex() == 1 else "peaks"
         super().accept()

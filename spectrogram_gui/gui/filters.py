@@ -40,6 +40,23 @@ def apply_nlms(y, mu=0.1, filter_order=32, eps=1e-6):
     return out
 
 
+def apply_lms(y, mu=0.1, filter_order=32):
+    """Standard LMS noise canceller."""
+    N = len(y)
+    w = np.zeros(filter_order)
+    out = np.zeros_like(y)
+    for n in range(N):
+        if n >= filter_order:
+            u = y[n - filter_order:n]
+            y_pred = np.dot(w, u)
+            e = y[n] - y_pred
+            w += 2 * mu * e * u
+            out[n] = e
+        else:
+            out[n] = y[n]
+    return out
+
+
 import numpy as np
 
 def apply_ale(y,
@@ -81,6 +98,27 @@ def apply_ale(y,
     return out
 
 
+def apply_rls(y, forgetting_factor=0.99, filter_order=32, delta=0.01):
+    """Recursive Least Squares noise canceller."""
+    N = len(y)
+    P = np.eye(filter_order) / delta
+    w = np.zeros(filter_order)
+    out = np.zeros_like(y)
+    for n in range(N):
+        if n >= filter_order:
+            u = y[n - filter_order:n]
+            y_pred = np.dot(w, u)
+            e = y[n] - y_pred
+            Pi_u = P.dot(u)
+            k = Pi_u / (forgetting_factor + u.dot(Pi_u))
+            w += k * e
+            P = (P - np.outer(k, Pi_u)) / forgetting_factor
+            out[n] = e
+        else:
+            out[n] = y[n]
+    return out
+
+
 def apply_wiener(
     x: np.ndarray,
     noise_db: float = -20,
@@ -102,7 +140,7 @@ def apply_wiener(
 
 class CombinedFilterDialog(QDialog):
     """
-    Dialog to apply NLMS, ALE and/or Wiener adaptive filters
+    Dialog to apply NLMS, LMS, ALE, RLS and/or Wiener adaptive filters
     to the selected time-range in the spectrogram GUI.
     """
     def __init__(self, main_window):
@@ -115,10 +153,14 @@ class CombinedFilterDialog(QDialog):
 
         # --- checkboxes ---
         self.nlms_chk = QCheckBox("Enable NLMS")
+        self.lms_chk = QCheckBox("Enable LMS")
         self.ale_chk = QCheckBox("Enable ALE")
+        self.rls_chk = QCheckBox("Enable RLS")
         self.wiener_chk = QCheckBox("Enable Wiener Adaptive")
         layout.addWidget(self.nlms_chk)
+        layout.addWidget(self.lms_chk)
         layout.addWidget(self.ale_chk)
+        layout.addWidget(self.rls_chk)
         layout.addWidget(self.wiener_chk)
 
         # --- parameter controls ---
@@ -130,12 +172,26 @@ class CombinedFilterDialog(QDialog):
         self.nlms_spin.setValue(0.01)
         p_layout.addWidget(self.nlms_spin)
 
+        p_layout.addWidget(QLabel("LMS μ (0–1):"))
+        self.lms_spin = QDoubleSpinBox()
+        self.lms_spin.setRange(0.0001, 1.0)
+        self.lms_spin.setSingleStep(0.001)
+        self.lms_spin.setValue(0.01)
+        p_layout.addWidget(self.lms_spin)
+
         p_layout.addWidget(QLabel("ALE λ (0–1):"))
         self.ale_spin = QDoubleSpinBox()
         self.ale_spin.setRange(0.9, 1.0)
         self.ale_spin.setSingleStep(0.001)
         self.ale_spin.setValue(0.99)
         p_layout.addWidget(self.ale_spin)
+
+        p_layout.addWidget(QLabel("RLS λ (0–1):"))
+        self.rls_spin = QDoubleSpinBox()
+        self.rls_spin.setRange(0.9, 1.0)
+        self.rls_spin.setSingleStep(0.001)
+        self.rls_spin.setValue(0.99)
+        p_layout.addWidget(self.rls_spin)
 
         p_layout.addWidget(QLabel("Wiener Noise (dB):"))
         self.wiener_spin = QDoubleSpinBox()
@@ -193,6 +249,12 @@ class CombinedFilterDialog(QDialog):
                 return
             out = apply_nlms(out, mu=self.nlms_spin.value(), filter_order=order)
 
+        if self.lms_chk.isChecked():
+            if len(out) < order:
+                QMessageBox.warning(self, "Too Short", "Segment shorter than LMS order.")
+                return
+            out = apply_lms(out, mu=self.lms_spin.value(), filter_order=order)
+
         if self.ale_chk.isChecked():
             if len(out) < order:
                 QMessageBox.warning(self, "Too Short", "Segment shorter than ALE order.")
@@ -205,6 +267,12 @@ class CombinedFilterDialog(QDialog):
                 mu=0.1,
                 forgetting_factor=self.ale_spin.value()
             )
+
+        if self.rls_chk.isChecked():
+            if len(out) < order:
+                QMessageBox.warning(self, "Too Short", "Segment shorter than RLS order.")
+                return
+            out = apply_rls(out, forgetting_factor=self.rls_spin.value(), filter_order=order)
         if self.wiener_chk.isChecked():
             out = apply_wiener(out, noise_db=self.wiener_spin.value())
 

@@ -51,7 +51,8 @@ class DopplerDetector(Detector):
         merge_gap_frames=100,
         merge_max_freq_diff_hz=30.0,
         smooth_sigma=1.5,
-        median_filter_size=(3, 1)
+        median_filter_size=(3, 1),
+        detection_method="peaks"
     ):
         # detection parameters
         self.freq_min = freq_min
@@ -71,6 +72,7 @@ class DopplerDetector(Detector):
         self.merge_max_freq_diff_hz = merge_max_freq_diff_hz
         self.smooth_sigma = smooth_sigma
         self.median_filter_size = median_filter_size
+        self.detection_method = detection_method
 
         # will be set in compute_spectrogram
         self.freqs = None
