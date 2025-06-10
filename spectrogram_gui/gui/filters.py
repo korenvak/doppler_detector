@@ -4,7 +4,7 @@ from PyQt5.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QLabel, QCheckBox,
     QDoubleSpinBox, QPushButton, QMessageBox
 )
-from personal.Koren.spectrogram_gui.utils.spectrogram_utils import compute_spectrogram
+from spectrogram_gui.utils.spectrogram_utils import compute_spectrogram
 
 
 import numpy as np

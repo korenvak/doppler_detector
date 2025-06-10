@@ -5,7 +5,7 @@ import time
 import os
 
 from PyQt5.QtWidgets import QWidget, QHBoxLayout, QPushButton
-from personal.Koren.spectrogram_gui.utils.ffmpeg_utils import convert_to_wav
+from spectrogram_gui.utils.ffmpeg_utils import convert_to_wav
 import soundfile as sf
 
 

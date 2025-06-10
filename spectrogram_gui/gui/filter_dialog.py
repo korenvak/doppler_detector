@@ -4,7 +4,7 @@ from PyQt5.QtWidgets import (
 )
 import numpy as np
 from scipy.signal import butter, sosfilt
-from personal.Koren.spectrogram_gui.utils.spectrogram_utils import compute_spectrogram
+from spectrogram_gui.utils.spectrogram_utils import compute_spectrogram
 
 
 class FilterDialog(QDialog):

@@ -7,7 +7,7 @@ import numpy as np
 import matplotlib.cm as cm
 from datetime import timedelta
 
-from personal.Koren.spectrogram_gui.gui.range_selector import RangeSelector
+from spectrogram_gui.gui.range_selector import RangeSelector
 
 
 class AxisViewBox(pg.ViewBox):

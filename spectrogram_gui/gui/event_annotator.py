@@ -5,8 +5,8 @@ from PyQt5.QtCore import Qt, QTimer
 from datetime import timedelta
 import pyqtgraph as pg
 
-from personal.Koren.spectrogram_gui.utils.snapshot_utils import save_snapshot
-from personal.Koren.spectrogram_gui.gui.annotation_editor import AnnotationEditorDialog
+from spectrogram_gui.utils.snapshot_utils import save_snapshot
+from spectrogram_gui.gui.annotation_editor import AnnotationEditorDialog
 
 class EventAnnotator:
     def __init__(self, canvas):

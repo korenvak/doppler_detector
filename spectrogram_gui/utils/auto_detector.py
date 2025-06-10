@@ -3,8 +3,8 @@ from tqdm import tqdm
 from scipy.ndimage import gaussian_filter, median_filter
 from scipy.signal import find_peaks
 # use your spectrogram and audio‐loading utils instead of soundfile + scipy.spectrogram
-from personal.Koren.spectrogram_gui.utils.audio_utils import load_audio_with_filters
-from personal.Koren.spectrogram_gui.utils.spectrogram_utils import compute_spectrogram as sg_compute_spec
+from spectrogram_gui.utils.audio_utils import load_audio_with_filters
+from spectrogram_gui.utils.spectrogram_utils import compute_spectrogram as sg_compute_spec
 
 # Default frequency range (Hz)
 DEFAULT_FREQ_MIN = 50

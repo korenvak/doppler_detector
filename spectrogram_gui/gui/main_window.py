@@ -15,18 +15,18 @@ from PyQt5.QtCore import Qt
 
 import qtawesome as qta
 
-from personal.Koren.spectrogram_gui.gui.spectrogram_canvas import SpectrogramCanvas
-from personal.Koren.spectrogram_gui.gui.event_annotator import EventAnnotator
-from personal.Koren.spectrogram_gui.gui.sound_device_player import SoundDevicePlayer
-from personal.Koren.spectrogram_gui.gui.filter_dialog import FilterDialog
-from personal.Koren.spectrogram_gui.gui.filters import CombinedFilterDialog
-from personal.Koren.spectrogram_gui.gui.fft_stats_dialog import FFTDialog
-from personal.Koren.spectrogram_gui.gui.gain_dialog import GainDialog
-from personal.Koren.spectrogram_gui.gui.params_dialog import ParamsDialog
-from personal.Koren.spectrogram_gui.gui.detector_params_dialog import DetectorParamsDialog
-from personal.Koren.spectrogram_gui.utils.audio_utils import load_audio_with_filters
-from personal.Koren.spectrogram_gui.utils.spectrogram_utils import compute_spectrogram
-from personal.Koren.spectrogram_gui.utils.auto_detector import DopplerDetector
+from spectrogram_gui.gui.spectrogram_canvas import SpectrogramCanvas
+from spectrogram_gui.gui.event_annotator import EventAnnotator
+from spectrogram_gui.gui.sound_device_player import SoundDevicePlayer
+from spectrogram_gui.gui.filter_dialog import FilterDialog
+from spectrogram_gui.gui.filters import CombinedFilterDialog
+from spectrogram_gui.gui.fft_stats_dialog import FFTDialog
+from spectrogram_gui.gui.gain_dialog import GainDialog
+from spectrogram_gui.gui.params_dialog import ParamsDialog
+from spectrogram_gui.gui.detector_params_dialog import DetectorParamsDialog
+from spectrogram_gui.utils.audio_utils import load_audio_with_filters
+from spectrogram_gui.utils.spectrogram_utils import compute_spectrogram
+from spectrogram_gui.utils.auto_detector import DopplerDetector
 
 # Path to the custom QSS file
 STYLE_SHEET_PATH = os.path.join(
