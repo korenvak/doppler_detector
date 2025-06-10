@@ -1,6 +1,6 @@
 import numpy as np
 from tqdm import tqdm
-from scipy.ndimage import gaussian_filter, median_filter
+from scipy.ndimage import gaussian_filter, median_filter, label
 from scipy.signal import find_peaks
 # use your spectrogram and audio‐loading utils instead of soundfile + scipy.spectrogram
 from spectrogram_gui.utils.audio_utils import load_audio_with_filters
@@ -9,6 +9,8 @@ from spectrogram_gui.utils.filter_utils import (
     apply_nlms,
     apply_ale,
     apply_wiener,
+    apply_lms,
+    apply_rls,
 )
 
 # Default frequency range (Hz)
@@ -238,6 +240,48 @@ class DopplerDetector(Detector):
                     merged.append(e)
         return [e["track"] for e in merged]
 
+    def detect_tracks_by_threshold(self):
+        """Detect tracks using simple thresholded connected components."""
+        S = self.Sxx_filt
+        mask = S >= self.power_threshold
+        labels, n = label(mask)
+        tracks = []
+        for lbl in range(1, n + 1):
+            coords = np.argwhere(labels == lbl)
+            if coords.size == 0:
+                continue
+            ti_min = coords[:, 1].min()
+            ti_max = coords[:, 1].max()
+            tr = []
+            for ti in range(ti_min, ti_max + 1):
+                rows = coords[coords[:, 1] == ti, 0]
+                if rows.size == 0:
+                    continue
+                best = rows[np.argmax(S[rows, ti])]
+                tr.append((ti, best))
+            if tr:
+                tracks.append(tr)
+        return tracks
+
+    def run_threshold_detection(self, filepath):
+        """Run detection using threshold-based component tracking."""
+        y, sr = self.load_audio(filepath)
+        f, t, _, _ = self.compute_spectrogram(y, sr, filepath)
+        tracks = self.detect_tracks_by_threshold()
+        tracks = self.merge_tracks(tracks)
+        final = []
+        for tr in tracks:
+            if len(tr) < self.min_track_length_frames:
+                continue
+            f_idxs = [pt[1] for pt in tr]
+            powers = [self.Sxx_filt[fi, ti] for ti, fi in tr]
+            if np.mean(powers) < self.min_track_avg_power:
+                continue
+            if np.std(f[f_idxs]) > self.max_track_freq_std_hz:
+                continue
+            final.append(tr)
+        return final
+
     def run_detection(self, filepath):
         """
         Full pipeline: load, spec, detect, track, merge, filter.
@@ -270,17 +314,21 @@ class AdaptiveFilterDetector(DopplerDetector):
         self,
         *args,
         nlms_mu=0.01,
+        lms_mu=0.01,
         ale_delay=1,
         ale_mu=0.1,
         ale_lambda=0.995,
+        rls_lambda=0.99,
         wiener_noise_db=-20,
         **kwargs,
     ):
         super().__init__(*args, **kwargs)
         self.nlms_mu = nlms_mu
+        self.lms_mu = lms_mu
         self.ale_delay = ale_delay
         self.ale_mu = ale_mu
         self.ale_lambda = ale_lambda
+        self.rls_lambda = rls_lambda
         self.wiener_noise_db = wiener_noise_db
 
     def load_audio(self, filepath):
@@ -288,6 +336,7 @@ class AdaptiveFilterDetector(DopplerDetector):
         order = min(32, len(y))
         if order > 1:
             y = apply_nlms(y, mu=self.nlms_mu, filter_order=order)
+            y = apply_lms(y, mu=self.lms_mu, filter_order=order)
         if order > self.ale_delay:
             y = apply_ale(
                 y,
@@ -296,5 +345,7 @@ class AdaptiveFilterDetector(DopplerDetector):
                 forgetting_factor=self.ale_lambda,
                 filter_order=order,
             )
+        if order > 1:
+            y = apply_rls(y, forgetting_factor=self.rls_lambda, filter_order=order)
         y = apply_wiener(y, noise_db=self.wiener_noise_db)
         return y, sr

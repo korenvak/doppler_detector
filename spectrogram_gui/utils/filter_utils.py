@@ -3,6 +3,20 @@
 import numpy as np
 from scipy.signal import stft, istft
 
+def apply_lms(x: np.ndarray, mu: float = 0.01, filter_order: int = 32) -> np.ndarray:
+    """Simple LMS adaptive filter."""
+    n = len(x)
+    w = np.zeros(filter_order, dtype=float)
+    y = np.zeros(n, dtype=float)
+    x_pad = np.concatenate([np.zeros(filter_order), x])
+    for i in range(n):
+        u = x_pad[i + filter_order - 1 : i - 1 : -1]
+        y_pred = np.dot(w, u)
+        e = x[i] - y_pred
+        w += 2 * mu * e * u
+        y[i] = y_pred
+    return y
+
 def apply_nlms(x: np.ndarray, mu: float = 0.01, filter_order: int = 32) -> np.ndarray:
     """
     Normalized LMS adaptive filter.
@@ -41,6 +55,25 @@ def apply_ale(x: np.ndarray, delay: int = 1, forgetting_factor: float = 0.995, f
     y = np.zeros(n, dtype=float)
     x_delayed = np.concatenate([np.zeros(delay), x])[:n]
     x_pad = np.concatenate([np.zeros(filter_order), x_delayed])
+    for i in range(n):
+        u = x_pad[i + filter_order - 1 : i - 1 : -1]
+        y_pred = np.dot(w, u)
+        e = x[i] - y_pred
+        Pi_u = P.dot(u)
+        k = Pi_u / (forgetting_factor + u.dot(Pi_u))
+        w += k * e
+        P = (P - np.outer(k, Pi_u)) / forgetting_factor
+        y[i] = y_pred
+    return y
+
+def apply_rls(x: np.ndarray, forgetting_factor: float = 0.99, filter_order: int = 32) -> np.ndarray:
+    """Recursive Least Squares adaptive filter."""
+    n = len(x)
+    delta = 0.01
+    P = np.eye(filter_order) / delta
+    w = np.zeros(filter_order, dtype=float)
+    y = np.zeros(n, dtype=float)
+    x_pad = np.concatenate([np.zeros(filter_order), x])
     for i in range(n):
         u = x_pad[i + filter_order - 1 : i - 1 : -1]
         y_pred = np.dot(w, u)
