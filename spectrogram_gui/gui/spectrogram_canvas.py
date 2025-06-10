@@ -2,6 +2,7 @@
 
 from PyQt5.QtWidgets import QWidget, QVBoxLayout, QToolTip, QApplication
 from PyQt5.QtCore import Qt
+from PyQt5.QtGui import QTransform
 import pyqtgraph as pg
 import numpy as np
 import matplotlib.cm as cm
@@ -192,7 +193,9 @@ class SpectrogramCanvas(QWidget):
         dt = times[1] - times[0] if len(times) > 1 else 1.0
         df = freqs[1] - freqs[0] if len(freqs) > 1 else 1.0
         self.img_item.resetTransform()
-        self.img_item.scale(dt, df)
+        transform = QTransform()
+        transform.scale(dt, df)
+        self.img_item.setTransform(transform)
         self.img_item.setPos(times[0], freqs[0])
 
         # --- 6) Constrain zoom/pan to data bounds
