@@ -12,11 +12,11 @@ from PyQt5.QtWidgets import (
 )
 from spectrogram_gui.utils.spectrogram_utils import compute_spectrogram
 from spectrogram_gui.utils.filter_utils import (
-    apply_nlms as fu_apply_nlms,
-    apply_lms as fu_apply_lms,
-    apply_ale as fu_apply_ale,
-    apply_rls as fu_apply_rls,
-    apply_wiener as fu_apply_wiener,
+    apply_nlms,
+    apply_lms,
+    apply_ale,
+    apply_rls,
+    apply_wiener,
 )
 
 
@@ -64,11 +64,11 @@ class CombinedFilterDialog(QDialog):
         self.lms_spin.setValue(0.01)
         p_layout.addWidget(self.lms_spin)
 
-        p_layout.addWidget(QLabel("ALE λ (0–1):"))
+        p_layout.addWidget(QLabel("ALE μ (0–1):"))
         self.ale_spin = QDoubleSpinBox()
-        self.ale_spin.setRange(0.9, 1.0)
+        self.ale_spin.setRange(0.0001, 1.0)
         self.ale_spin.setSingleStep(0.001)
-        self.ale_spin.setValue(0.99)
+        self.ale_spin.setValue(0.01)
         p_layout.addWidget(self.ale_spin)
 
         p_layout.addWidget(QLabel("RLS λ (0–1):"))
@@ -132,36 +132,32 @@ class CombinedFilterDialog(QDialog):
             if len(out) < order:
                 QMessageBox.warning(self, "Too Short", "Segment shorter than NLMS order.")
                 return
-            pred = fu_apply_nlms(out, mu=self.nlms_spin.value(), filter_order=order)
-            out = out - pred
+            out = apply_nlms(out, mu=self.nlms_spin.value(), filter_order=order)
 
         if self.lms_chk.isChecked():
             if len(out) < order:
                 QMessageBox.warning(self, "Too Short", "Segment shorter than LMS order.")
                 return
-            pred = fu_apply_lms(out, mu=self.lms_spin.value(), filter_order=order)
-            out = out - pred
+            out = apply_lms(out, mu=self.lms_spin.value(), filter_order=order)
 
         if self.ale_chk.isChecked():
             if len(out) < order:
                 QMessageBox.warning(self, "Too Short", "Segment shorter than ALE order.")
                 return
-            pred = fu_apply_ale(
+            out = apply_ale(
                 out,
                 delay=1,
-                forgetting_factor=self.ale_spin.value(),
+                mu=self.ale_spin.value(),
                 filter_order=order,
             )
-            out = out - pred
 
         if self.rls_chk.isChecked():
             if len(out) < order:
                 QMessageBox.warning(self, "Too Short", "Segment shorter than RLS order.")
                 return
-            pred = fu_apply_rls(out, forgetting_factor=self.rls_spin.value(), filter_order=order)
-            out = out - pred
+            out = apply_rls(out, forgetting_factor=self.rls_spin.value(), filter_order=order)
         if self.wiener_chk.isChecked():
-            out = fu_apply_wiener(out, noise_db=self.wiener_spin.value())
+            out = apply_wiener(out, noise_db=self.wiener_spin.value())
 
         # 5) write back & replot
         new_wave = wave.copy()

@@ -4,31 +4,29 @@ import numpy as np
 from scipy.signal import stft, istft
 
 def apply_lms(x: np.ndarray, mu: float = 0.01, filter_order: int = 32) -> np.ndarray:
-    """Simple LMS adaptive filter."""
+    """Simple LMS adaptive filter returning the error signal."""
+    x = x.astype(np.float64, copy=False)
     n = len(x)
-    w = np.zeros(filter_order, dtype=float)
-    y = np.zeros(n, dtype=float)
+    w = np.zeros(filter_order, dtype=np.float64)
+    y = np.zeros(n, dtype=np.float64)
     x_pad = np.concatenate([np.zeros(filter_order), x])
     for i in range(n):
         u = x_pad[i : i + filter_order][::-1]
         y_pred = np.dot(w, u)
         e = x[i] - y_pred
         w += 2 * mu * e * u
-        y[i] = y_pred
+        y[i] = e
     return y
 
 def apply_nlms(x: np.ndarray, mu: float = 0.01, filter_order: int = 32) -> np.ndarray:
     """
-    Normalized LMS adaptive filter.
-    x: input signal segment
-    mu: step size (0 < mu < 1)
-    filter_order: number of taps
-    Returns predicted component (enhanced output).
+    Normalized LMS adaptive filter returning the error signal.
     """
+    x = x.astype(np.float64, copy=False)
     n = len(x)
-    w = np.zeros(filter_order, dtype=float)
+    w = np.zeros(filter_order, dtype=np.float64)
     eps = 1e-8
-    y = np.zeros(n, dtype=float)
+    y = np.zeros(n, dtype=np.float64)
     x_padded = np.concatenate([np.zeros(filter_order), x])
     for i in range(n):
         u = x_padded[i : i + filter_order][::-1]
@@ -36,53 +34,49 @@ def apply_nlms(x: np.ndarray, mu: float = 0.01, filter_order: int = 32) -> np.nd
         e = x[i] - y_pred
         norm = np.dot(u, u) + eps
         w += (mu / norm) * e * u
-        y[i] = y_pred
+        y[i] = e
     return y
 
-def apply_ale(x: np.ndarray, delay: int = 1, forgetting_factor: float = 0.995, filter_order: int = 32) -> np.ndarray:
-    """
-    Adaptive Line Enhancer (ALE) via RLS.
-    x: input signal segment
-    delay: samples delay for reference
-    forgetting_factor: RLS lambda (0 < λ < 1)
-    filter_order: number of taps
-    Returns predicted component (enhanced output).
-    """
+def apply_ale(
+    x: np.ndarray,
+    delay: int = 1,
+    mu: float = 0.01,
+    filter_order: int = 32,
+) -> np.ndarray:
+    """Adaptive Line Enhancer using an LMS filter."""
+    x = x.astype(np.float64, copy=False)
     n = len(x)
-    delta = 0.01
-    P = np.eye(filter_order) / delta
-    w = np.zeros(filter_order, dtype=float)
-    y = np.zeros(n, dtype=float)
-    x_delayed = np.concatenate([np.zeros(delay), x])[:n]
-    x_pad = np.concatenate([np.zeros(filter_order), x_delayed])
+    w = np.zeros(filter_order, dtype=np.float64)
+    y = np.zeros(n, dtype=np.float64)
+    x_pad = np.concatenate([np.zeros(delay + filter_order), x])
     for i in range(n):
-        u = x_pad[i : i + filter_order][::-1]
+        u = x_pad[i + delay : i + delay + filter_order][::-1]
         y_pred = np.dot(w, u)
         e = x[i] - y_pred
-        Pi_u = P.dot(u)
-        k = Pi_u / (forgetting_factor + u.dot(Pi_u))
-        w += k * e
-        P = (P - np.outer(k, Pi_u)) / forgetting_factor
-        y[i] = y_pred
+        w += 2 * mu * e * u
+        y[i] = e
     return y
 
 def apply_rls(x: np.ndarray, forgetting_factor: float = 0.99, filter_order: int = 32) -> np.ndarray:
-    """Recursive Least Squares adaptive filter."""
+    """Recursive Least Squares adaptive filter returning the error signal."""
+    x = x.astype(np.float64, copy=False)
     n = len(x)
-    delta = 0.01
-    P = np.eye(filter_order) / delta
-    w = np.zeros(filter_order, dtype=float)
-    y = np.zeros(n, dtype=float)
+    delta = 1.0
+    P = np.eye(filter_order, dtype=np.float64) / delta
+    w = np.zeros(filter_order, dtype=np.float64)
+    y = np.zeros(n, dtype=np.float64)
     x_pad = np.concatenate([np.zeros(filter_order), x])
+    eps = 1e-8
     for i in range(n):
         u = x_pad[i : i + filter_order][::-1]
+        Pi_u = P.dot(u)
+        denom = forgetting_factor + np.dot(u, Pi_u) + eps
+        k = Pi_u / denom
         y_pred = np.dot(w, u)
         e = x[i] - y_pred
-        Pi_u = P.dot(u)
-        k = Pi_u / (forgetting_factor + u.dot(Pi_u))
         w += k * e
         P = (P - np.outer(k, Pi_u)) / forgetting_factor
-        y[i] = y_pred
+        y[i] = e
     return y
 
 def apply_wiener(x: np.ndarray, noise_db: float = -20, window_size: int = 1024, overlap: int = 512) -> np.ndarray:
