@@ -1,141 +1,26 @@
 import numpy as np
 from scipy.signal import stft, istft
 from PyQt5.QtWidgets import (
-    QDialog, QVBoxLayout, QHBoxLayout, QLabel, QCheckBox,
-    QDoubleSpinBox, QPushButton, QMessageBox
+    QDialog,
+    QVBoxLayout,
+    QHBoxLayout,
+    QLabel,
+    QCheckBox,
+    QDoubleSpinBox,
+    QPushButton,
+    QMessageBox,
 )
 from spectrogram_gui.utils.spectrogram_utils import compute_spectrogram
+from spectrogram_gui.utils.filter_utils import (
+    apply_nlms as fu_apply_nlms,
+    apply_lms as fu_apply_lms,
+    apply_ale as fu_apply_ale,
+    apply_rls as fu_apply_rls,
+    apply_wiener as fu_apply_wiener,
+)
 
 
-import numpy as np
 
-def apply_nlms(y, mu=0.1, filter_order=32, eps=1e-6):
-    """
-    Normalized LMS noise‐canceller along time axis.
-    y: 1D audio waveform
-    """
-    N = len(y)
-    # initialize
-    w = np.zeros(filter_order)
-    out = np.zeros_like(y)
-
-    # run frame by frame
-    for n in range(N):
-        # only start once we have enough history
-        if n >= filter_order:
-            # get the last 'filter_order' samples
-            u = y[n-filter_order:n]           # shape = (filter_order,)
-            # prediction
-            y_pred = np.dot(w, u)
-            # error
-            e = y[n] - y_pred
-            # normalized step
-            norm = np.dot(u, u) + eps
-            w += (mu / norm) * e * u
-            out[n] = e
-        else:
-            # before buffer fills, just passthrough
-            out[n] = y[n]
-
-    return out
-
-
-def apply_lms(y, mu=0.1, filter_order=32):
-    """Standard LMS noise canceller."""
-    N = len(y)
-    w = np.zeros(filter_order)
-    out = np.zeros_like(y)
-    for n in range(N):
-        if n >= filter_order:
-            u = y[n - filter_order:n]
-            y_pred = np.dot(w, u)
-            e = y[n] - y_pred
-            w += 2 * mu * e * u
-            out[n] = e
-        else:
-            out[n] = y[n]
-    return out
-
-
-import numpy as np
-
-def apply_ale(y,
-              order: int = 32,
-              delay: int = 1,
-              mu: float = 0.1,
-              forgetting_factor: float = 1.0,
-              eps: float = 1e-6):
-    """
-    Feedback-delay adaptive line enhancer (ALE) via leaky-LMS.
-    - order: number of filter taps
-    - delay: prediction horizon (in samples)
-    - mu: adaptation rate
-    - forgetting_factor: leaky-LMS leakage (1.0 = no leakage)
-    - eps: regularization to avoid divide-by-zero
-    """
-    N = len(y)
-    w = np.zeros(order, dtype=float)
-    out = np.zeros_like(y, dtype=float)
-
-    for n in range(N):
-        if n >= order + delay:
-            # always get exactly 'order' samples behind (n-delay-order .. n-delay-1)
-            u = y[n - delay - order : n - delay]
-            # if slicing gave fewer than order (shouldn't happen if n >= order+delay), just passthrough
-            if u.shape[0] == order:
-                # predicted value
-                y_pred = np.dot(w, u)
-                e = y[n] - y_pred
-                norm_u = np.dot(u, u) + eps
-                # leaky-LMS weight update
-                w = forgetting_factor * w + (mu / norm_u) * e * u
-                out[n] = e
-            else:
-                out[n] = y[n]
-        else:
-            out[n] = y[n]
-
-    return out
-
-
-def apply_rls(y, forgetting_factor=0.99, filter_order=32, delta=0.01):
-    """Recursive Least Squares noise canceller."""
-    N = len(y)
-    P = np.eye(filter_order) / delta
-    w = np.zeros(filter_order)
-    out = np.zeros_like(y)
-    for n in range(N):
-        if n >= filter_order:
-            u = y[n - filter_order:n]
-            y_pred = np.dot(w, u)
-            e = y[n] - y_pred
-            Pi_u = P.dot(u)
-            k = Pi_u / (forgetting_factor + u.dot(Pi_u))
-            w += k * e
-            P = (P - np.outer(k, Pi_u)) / forgetting_factor
-            out[n] = e
-        else:
-            out[n] = y[n]
-    return out
-
-
-def apply_wiener(
-    x: np.ndarray,
-    noise_db: float = -20,
-    window_size: int = 1024,
-    overlap: int = 512
-) -> np.ndarray:
-    """Wiener filter via spectral subtraction (STFT/ISTFT)."""
-    noise_pow = 10 ** (noise_db / 10)
-    f, t, Zxx = stft(x, nperseg=window_size, noverlap=overlap)
-    Sxx = np.abs(Zxx) ** 2
-    G = Sxx / (Sxx + noise_pow)
-    Zxx_w = Zxx * G
-    _, x_w = istft(Zxx_w, nperseg=window_size, noverlap=overlap)
-
-    if len(x_w) > len(x):
-        return x_w[:len(x)]
-    return np.pad(x_w, (0, len(x) - len(x_w)))
 
 
 class CombinedFilterDialog(QDialog):
@@ -247,43 +132,52 @@ class CombinedFilterDialog(QDialog):
             if len(out) < order:
                 QMessageBox.warning(self, "Too Short", "Segment shorter than NLMS order.")
                 return
-            out = apply_nlms(out, mu=self.nlms_spin.value(), filter_order=order)
+            pred = fu_apply_nlms(out, mu=self.nlms_spin.value(), filter_order=order)
+            out = out - pred
 
         if self.lms_chk.isChecked():
             if len(out) < order:
                 QMessageBox.warning(self, "Too Short", "Segment shorter than LMS order.")
                 return
-            out = apply_lms(out, mu=self.lms_spin.value(), filter_order=order)
+            pred = fu_apply_lms(out, mu=self.lms_spin.value(), filter_order=order)
+            out = out - pred
 
         if self.ale_chk.isChecked():
             if len(out) < order:
                 QMessageBox.warning(self, "Too Short", "Segment shorter than ALE order.")
                 return
-            # basic ALE with fixed delay of 1 sample
-            out = apply_ale(
+            pred = fu_apply_ale(
                 out,
-                order=order,
                 delay=1,
-                mu=0.1,
-                forgetting_factor=self.ale_spin.value()
+                forgetting_factor=self.ale_spin.value(),
+                filter_order=order,
             )
+            out = out - pred
 
         if self.rls_chk.isChecked():
             if len(out) < order:
                 QMessageBox.warning(self, "Too Short", "Segment shorter than RLS order.")
                 return
-            out = apply_rls(out, forgetting_factor=self.rls_spin.value(), filter_order=order)
+            pred = fu_apply_rls(out, forgetting_factor=self.rls_spin.value(), filter_order=order)
+            out = out - pred
         if self.wiener_chk.isChecked():
-            out = apply_wiener(out, noise_db=self.wiener_spin.value())
+            out = fu_apply_wiener(out, noise_db=self.wiener_spin.value())
 
         # 5) write back & replot
         new_wave = wave.copy()
         new_wave[i0:i1] = out
         self.main.audio_player.replace_waveform(new_wave)
 
+        # Preserve the current zoom level so the view does not reset after filtering
+        current_xrange, current_yrange = self.main.canvas.vb.viewRange()
+
         freqs, times, Sxx, _ = compute_spectrogram(
             new_wave, sr, "", params=self.main.spectrogram_params
         )
         self.main.canvas.plot_spectrogram(freqs, times, Sxx, self.main.canvas.start_time)
+
+        # Restore zoom if it was previously set
+        self.main.canvas.vb.setXRange(*current_xrange, padding=0)
+        self.main.canvas.vb.setYRange(*current_yrange, padding=0)
 
         self.accept()
