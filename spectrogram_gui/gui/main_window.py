@@ -409,7 +409,7 @@ class MainWindow(QMainWindow):
             return
 
         # parse timestamp from filename or fall back to file modification time
-        timestamp = parse_timestamp_from_filename(fname)
+        timestamp = parse_timestamp_from_filename(path)
         if timestamp is None:
             try:
                 timestamp = datetime.fromtimestamp(os.path.getmtime(path))

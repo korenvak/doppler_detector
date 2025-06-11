@@ -7,10 +7,11 @@ def load_audio_with_filters(path, hp=None, lp=None, gain_db=0):
     """Load audio from ``path`` and optionally apply simple filters."""
     try:
         y, sr = librosa.load(path, sr=None, mono=True)
-    except ValueError as e:
-        if "array is too big" in str(e).lower():
+    except Exception as e:
+        msg = str(e).lower()
+        if "array is too big" in msg or "psf_fseek" in msg:
             # Fallback to a streaming read with soundfile to avoid large
-            # allocations on huge FLAC files
+            # allocations or libsndfile seek errors on huge FLAC files
             with sf.SoundFile(path) as f:
                 sr = f.samplerate
                 blocks = []

@@ -3,7 +3,9 @@ import tempfile
 import os
 from pathlib import Path
 
-FFMPEG_PATH = os.path.join("resources", "ffmpeg", "ffmpeg.exe")
+# Try bundled ffmpeg first, then fall back to system-installed ffmpeg
+_bundled = os.path.join(os.path.dirname(__file__), os.pardir, "resources", "ffmpeg", "ffmpeg.exe")
+FFMPEG_PATH = _bundled if os.path.exists(_bundled) else "ffmpeg"
 
 def convert_to_wav(input_path):
     input_path = Path(input_path)

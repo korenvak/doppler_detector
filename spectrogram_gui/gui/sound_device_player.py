@@ -43,7 +43,7 @@ class SoundDevicePlayer(QWidget):
         """
         print(f"[SoundDevicePlayer] Loading file: {filepath}")
         wav_path = convert_to_wav(filepath)
-        if not os.path.exists(wav_path):
+        if not wav_path or not os.path.exists(wav_path):
             print("[SoundDevicePlayer] Failed to convert file.")
             return
 

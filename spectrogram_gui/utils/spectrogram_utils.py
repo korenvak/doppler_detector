@@ -8,13 +8,14 @@ from scipy.signal import spectrogram
 from scipy.ndimage import gaussian_filter, median_filter
 
 
-def parse_timestamp_from_filename(fname: str):
-    """Return a ``datetime`` parsed from *fname* or ``None``."""
+def parse_timestamp_from_filename(path: str):
+    """Return a ``datetime`` parsed from ``path`` or ``None``."""
     patterns = [
         r"(\d{4}-\d{2}-\d{2})[ _](\d{2})-(\d{2})-(\d{2})",
     ]
+    name = os.path.basename(path)
     for pat in patterns:
-        m = re.search(pat, fname)
+        m = re.search(pat, name)
         if not m:
             continue
         date_part = m.group(1)

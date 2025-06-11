@@ -350,7 +350,7 @@ class SpectrogramCanvas(QWidget):
                 self.plot.removeItem(item)
 
     def update_playback_position(self, ms):
-        if self.start_time is None or self.times is None:
+        if self.times is None:
             return
         rel_sec = ms / 1000.0
         x = self.times[0] + rel_sec
