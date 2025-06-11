@@ -343,7 +343,10 @@ class SpectrogramCanvas(QWidget):
 
     def clear_annotations(self):
         for item in list(self.plot.items):
-            if isinstance(item, (pg.TextItem, pg.InfiniteLine)) and item is not self.img_item:
+            if (
+                isinstance(item, (pg.TextItem, pg.InfiniteLine))
+                and item not in (self.img_item, self.playback_line)
+            ):
                 if QApplication.keyboardModifiers() & Qt.AltModifier:
                     if item in self.alt_lines or item in self.alt_texts:
                         continue

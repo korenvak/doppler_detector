@@ -22,7 +22,7 @@ def load_audio_with_filters(path, hp=None, lp=None, gain_db=0):
                     if f.channels > 1:
                         data = np.mean(data, axis=1)
                     blocks.append(data)
-                y = np.concatenate(blocks) if blocks else np.array([], dtype=float)
+                y = np.concatenate(blocks) if blocks else np.array([], dtype=np.float32)
         else:
             raise
 

@@ -13,9 +13,9 @@ def parse_timestamp_from_filename(path: str):
     patterns = [
         r"(\d{4}-\d{2}-\d{2})[ _](\d{2})-(\d{2})-(\d{2})",
     ]
-    name = os.path.basename(path)
+    text = os.path.normpath(path)
     for pat in patterns:
-        m = re.search(pat, name)
+        m = re.search(pat, text)
         if not m:
             continue
         date_part = m.group(1)
