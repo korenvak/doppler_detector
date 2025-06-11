@@ -354,12 +354,8 @@ class SpectrogramCanvas(QWidget):
             return
         rel_sec = ms / 1000.0
         x = self.times[0] + rel_sec
-        for item in list(self.plot.items):
-            if isinstance(item, pg.InfiniteLine) and item.pen.color().name() == '#ff0000':
-                self.plot.removeItem(item)
-        line = pg.InfiniteLine(angle=90, pen=pg.mkPen('r', width=1))
-        self.plot.addItem(line)
-        line.setValue(x)
+        self.playback_line.setValue(x)
+        self.playback_line.show()
 
     def set_start_time(self, dt):
         self.start_time = dt

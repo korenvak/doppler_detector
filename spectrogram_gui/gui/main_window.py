@@ -25,7 +25,10 @@ from spectrogram_gui.gui.gain_dialog import GainDialog
 from spectrogram_gui.gui.params_dialog import ParamsDialog
 from spectrogram_gui.gui.detector_params_dialog import DetectorParamsDialog
 from spectrogram_gui.utils.audio_utils import load_audio_with_filters
-from spectrogram_gui.utils.spectrogram_utils import compute_spectrogram
+from spectrogram_gui.utils.spectrogram_utils import (
+    compute_spectrogram,
+    parse_timestamp_from_filename,
+)
 from spectrogram_gui.utils.auto_detector import DopplerDetector
 
 # Path to the custom QSS file
@@ -405,17 +408,13 @@ class MainWindow(QMainWindow):
             QMessageBox.critical(self, "Parse Error", "Cannot extract site/pixel from filename.")
             return
 
-        # parse timestamp
-        m = re.search(r"\d{4}-\d{2}-\d{2} \d{2}-\d{2}-\d{2}", fname)
-        if m:
-            date_part, time_part = m.group(0).split(" ")
-            time_part = time_part.replace("-", ":")
+        # parse timestamp from filename or fall back to file modification time
+        timestamp = parse_timestamp_from_filename(fname)
+        if timestamp is None:
             try:
-                timestamp = datetime.strptime(f"{date_part} {time_part}", "%Y-%m-%d %H:%M:%S")
-            except ValueError:
+                timestamp = datetime.fromtimestamp(os.path.getmtime(path))
+            except Exception:
                 timestamp = None
-        else:
-            timestamp = None
 
         # load audio & spectrogram
         try:

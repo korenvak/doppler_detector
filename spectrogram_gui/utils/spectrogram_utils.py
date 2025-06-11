@@ -2,10 +2,30 @@ import numpy as np
 import librosa
 from datetime import datetime
 import os
+import re
 
-import numpy as np
 from scipy.signal import spectrogram
 from scipy.ndimage import gaussian_filter, median_filter
+
+
+def parse_timestamp_from_filename(fname: str):
+    """Return a ``datetime`` parsed from *fname* or ``None``."""
+    patterns = [
+        r"(\d{4}-\d{2}-\d{2})[ _](\d{2})-(\d{2})-(\d{2})",
+    ]
+    for pat in patterns:
+        m = re.search(pat, fname)
+        if not m:
+            continue
+        date_part = m.group(1)
+        time_part = ":".join(m.group(i) for i in range(2, 5))
+        try:
+            return datetime.strptime(
+                f"{date_part} {time_part}", "%Y-%m-%d %H:%M:%S"
+            )
+        except ValueError:
+            pass
+    return None
 
 def compute_spectrogram(y, sr, filepath, params):
     """
