@@ -317,7 +317,7 @@ class AdaptiveFilterDetector(DopplerDetector):
         *args,
         nlms_mu=0.01,
         lms_mu=0.01,
-        ale_delay=1,
+        ale_delay=None,
         ale_mu=0.1,
         ale_lambda=0.995,
         rls_lambda=0.99,
@@ -339,7 +339,7 @@ class AdaptiveFilterDetector(DopplerDetector):
         if order > 1:
             y = apply_nlms(y, mu=self.nlms_mu, filter_order=order)
             y = apply_lms(y, mu=self.lms_mu, filter_order=order)
-        if order > self.ale_delay:
+        if self.ale_delay is None or order > self.ale_delay:
             y = apply_ale(
                 y,
                 delay=self.ale_delay,

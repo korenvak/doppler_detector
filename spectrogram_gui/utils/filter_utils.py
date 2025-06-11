@@ -40,7 +40,7 @@ def apply_nlms(x: np.ndarray, mu: float = 0.01, filter_order: int = 32) -> np.nd
 
 def apply_ale(
     x: np.ndarray,
-    delay: Optional[int] = 1,
+    delay: Optional[int] = None,
     mu: float = 0.01,
     filter_order: int = 32,
     test_delays: Optional[Union[int, List[int]]] = None,
@@ -55,8 +55,8 @@ def apply_ale(
     x : np.ndarray
         Input signal.
     delay : int or None, optional
-        Specific delay to use.  If ``None``, the delay that maximizes output
-        energy over ``test_delays`` is selected.
+        Specific delay to use. If ``None`` (default), the delay that maximizes
+        output energy over ``test_delays`` is selected.
     mu : float
         LMS adaptation rate.
     filter_order : int
@@ -68,7 +68,7 @@ def apply_ale(
     return_all : bool
         If ``True``, return a list of all predictions for each tested delay.
     return_metrics : bool
-        If ``True``, also return the energy based metric for each delay.
+        If ``True``, also return the SNR metric (in dB) for each tested delay.
     forgetting_factor : float, optional
         Placeholder for backwards compatibility (unused).
 
