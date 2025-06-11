@@ -344,7 +344,6 @@ class AdaptiveFilterDetector(DopplerDetector):
                 y,
                 delay=self.ale_delay,
                 mu=self.ale_mu,
-                forgetting_factor=self.ale_lambda,
                 filter_order=order,
             )
         if order > 1:
