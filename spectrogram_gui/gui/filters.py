@@ -7,6 +7,7 @@ from PyQt5.QtWidgets import (
     QLabel,
     QCheckBox,
     QDoubleSpinBox,
+    QSpinBox,
     QPushButton,
     QMessageBox,
 )
@@ -70,6 +71,14 @@ class CombinedFilterDialog(QDialog):
         self.ale_spin.setSingleStep(0.001)
         self.ale_spin.setValue(0.01)
         p_layout.addWidget(self.ale_spin)
+
+        p_layout.addWidget(QLabel("ALE Delay:"))
+        self.ale_delay_spin = QSpinBox()
+        self.ale_delay_spin.setRange(0, 100)
+        self.ale_delay_spin.setValue(0)
+        self.ale_delay_spin.setSpecialValueText("Auto")
+        self.ale_delay_spin.setToolTip("0 = automatic delay search")
+        p_layout.addWidget(self.ale_delay_spin)
 
         p_layout.addWidget(QLabel("RLS λ (0–1):"))
         self.rls_spin = QDoubleSpinBox()
@@ -144,9 +153,11 @@ class CombinedFilterDialog(QDialog):
             if len(out) < order:
                 QMessageBox.warning(self, "Too Short", "Segment shorter than ALE order.")
                 return
+            delay_val = self.ale_delay_spin.value()
+            delay = None if delay_val == 0 else delay_val
             out = apply_ale(
                 out,
-                delay=1,
+                delay=delay,
                 mu=self.ale_spin.value(),
                 filter_order=order,
             )

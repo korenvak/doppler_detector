@@ -2,6 +2,7 @@
 
 import numpy as np
 from scipy.signal import stft, istft
+from typing import Optional
 
 def apply_lms(x: np.ndarray, mu: float = 0.01, filter_order: int = 32) -> np.ndarray:
     """Simple LMS adaptive filter returning the error signal."""
@@ -39,13 +40,24 @@ def apply_nlms(x: np.ndarray, mu: float = 0.01, filter_order: int = 32) -> np.nd
 
 def apply_ale(
     x: np.ndarray,
-    delay: int = 1,
+    delay: Optional[int] = 1,
     mu: float = 0.01,
     filter_order: int = 32,
 ) -> np.ndarray:
-    """Adaptive Line Enhancer using an LMS filter."""
+    """Adaptive Line Enhancer using an LMS filter.
+
+    If ``delay`` is ``None``, the delay is estimated automatically by
+    searching for the first minimum of the autocorrelation up to
+    ``filter_order`` samples.
+    """
     x = x.astype(np.float64, copy=False)
     n = len(x)
+    if delay is None:
+        ac = np.correlate(x, x, mode="full")[n - 1 : n - 1 + filter_order]
+        if len(ac) > 1:
+            delay = int(np.argmin(np.abs(ac[1:])) + 1)
+        else:
+            delay = 1
     w = np.zeros(filter_order, dtype=np.float64)
     y = np.zeros(n, dtype=np.float64)
     x_pad = np.concatenate([np.zeros(delay + filter_order), x])
