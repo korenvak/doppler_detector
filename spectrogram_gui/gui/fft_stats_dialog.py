@@ -26,7 +26,14 @@ class FFTDialog(QDialog):
 
     def plot_fft(self):
         # Selected time range
-        t0, t1 = self.main_window.canvas.selected_range
+        sel = self.main_window.canvas.selected_range
+        if sel is None:
+            t0, t1 = (
+                self.main_window.canvas.times[0],
+                self.main_window.canvas.times[-1],
+            )
+        else:
+            t0, t1 = sel
 
         # Current waveform + sr
         wave = self.main_window.audio_player.data
