@@ -2,6 +2,7 @@
 
 import numpy as np
 from scipy.signal import stft, istft
+from typing import Optional, List, Union, Tuple
 
 def apply_lms(x: np.ndarray, mu: float = 0.01, filter_order: int = 32) -> np.ndarray:
     """Simple LMS adaptive filter returning the error signal."""
@@ -39,14 +40,14 @@ def apply_nlms(x: np.ndarray, mu: float = 0.01, filter_order: int = 32) -> np.nd
 
 def apply_ale(
     x: np.ndarray,
-    delay: int | None = 1,
+    delay: Optional[int] = 1,
     mu: float = 0.01,
     filter_order: int = 32,
-    test_delays: int | list[int] | None = None,
+    test_delays: Optional[Union[int, List[int]]] = None,
     return_all: bool = False,
     return_metrics: bool = False,
-    forgetting_factor: float | None = None,
-) -> np.ndarray | tuple:
+    forgetting_factor: Optional[float] = None,
+) -> Union[np.ndarray, Tuple]:
     """Adaptive Line Enhancer using an LMS filter.
 
     Parameters
@@ -60,7 +61,7 @@ def apply_ale(
         LMS adaptation rate.
     filter_order : int
         Order of the adaptive filter.
-    test_delays : int or list[int], optional
+    test_delays : int or List[int], optional
         Range of delays to evaluate when ``delay`` is ``None``.  If an integer
         is provided, delays ``1..test_delays`` are evaluated.  Defaults to
         ``1..10``.
