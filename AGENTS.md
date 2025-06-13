@@ -1,0 +1,1 @@
+In this repository, contributions should prioritize bug fixes and performance optimizations without reducing signal resolution or resampling data. Any new scripts or utilities should avoid introducing unnecessary dependencies. Tests should be run with `python -m py_compile $(git ls-files '*.py')`.
