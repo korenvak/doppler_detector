@@ -289,7 +289,7 @@ def calculate_flight_dynamics(flight_df, sensor_lat=None, sensor_lon=None):
 
 
 def analyze_relative_motion(df_flight, sensor_lat, sensor_lon, start_time, end_time):
-    """Analyze motion of an aircraft relative to a sensor between start and end times."""
+    """Return flight dynamics relative to a sensor within a time window."""
     df = df_flight.copy()
     df['parsed_time'] = pd.to_datetime(df.get('Time'), errors='coerce')
 
@@ -297,80 +297,85 @@ def analyze_relative_motion(df_flight, sensor_lat, sensor_lon, start_time, end_t
     end = pd.to_datetime(end_time)
     df = df[(df['parsed_time'] >= start) & (df['parsed_time'] <= end)].reset_index(drop=True)
     if len(df) < 2:
-        cols = ['time','lat','lon','alt','distance_to_sensor','delta_distance','speed',
-                'delta_speed','heading','delta_heading','pixel_movement_type']
+        cols = [
+            'parsed_time', 'lat', 'lon', 'alt', 'dt', 'dist3d', 'speed', 'delta_speed',
+            'heading', 'delta_heading', 'dist_to_sensor', 'delta_dist', 'movement_type'
+        ]
         return pd.DataFrame(columns=cols)
-
-    df['time_diff'] = df['parsed_time'].diff().dt.total_seconds().fillna(1)
-
-    coord_cols = ['GPS Lat', 'GPS Lon']
-    if 'GPS Alt' in df.columns:
-        coord_cols.append('GPS Alt')
-    coords = df[coord_cols].values
-    from geopy.distance import geodesic
 
     sensor_alt = df['GPS Alt'].min() if 'GPS Alt' in df.columns else 0
 
-    dist_sensor = []
-    for row in coords:
-        lat, lon = row[:2]
-        alt = row[2] if len(row) > 2 else 0
-        d2d = geodesic((lat, lon), (sensor_lat, sensor_lon)).meters
-        dist_sensor.append(np.sqrt(d2d**2 + (alt - sensor_alt)**2))
-    df['distance_to_sensor'] = dist_sensor
-    df['delta_distance'] = df['distance_to_sensor'].diff().fillna(0)
+    lat = df['GPS Lat'].to_numpy()
+    lon = df['GPS Lon'].to_numpy()
+    alt = df['GPS Alt'].fillna(0).to_numpy() if 'GPS Alt' in df.columns else np.zeros(len(df))
 
-    dist_path = [0]
-    for i in range(1, len(coords)):
-        lat1, lon1 = coords[i-1][:2]
-        lat2, lon2 = coords[i][:2]
-        alt1 = coords[i-1][2] if len(coords[i-1]) > 2 else 0
-        alt2 = coords[i][2] if len(coords[i]) > 2 else 0
-        d2d = geodesic((lat1, lon1), (lat2, lon2)).meters
-        d3d = np.sqrt(d2d**2 + (alt2 - alt1)**2)
-        dist_path.append(d3d)
-    df['dist3d'] = dist_path
-    df['speed'] = df['dist3d'] / df['time_diff'].replace(0, 1)
-    df['delta_speed'] = df['speed'].diff().fillna(0)
+    dt = df['parsed_time'].diff().dt.total_seconds().fillna(1).to_numpy()
 
-    headings = [0]
-    for i in range(1, len(coords)):
-        lat1, lon1 = coords[i-1][:2]
-        lat2, lon2 = coords[i][:2]
-        dlon = np.radians(lon2 - lon1)
-        lat1_rad = np.radians(lat1)
-        lat2_rad = np.radians(lat2)
+    dist3d = [0.0]
+    heading = [0.0]
+    from geopy.distance import geodesic
+
+    for i in range(1, len(df)):
+        d2d = geodesic((lat[i-1], lon[i-1]), (lat[i], lon[i])).meters
+        dz = alt[i] - alt[i-1]
+        dist3d.append(np.sqrt(d2d**2 + dz**2))
+
+        dlon = np.radians(lon[i] - lon[i-1])
+        lat1_rad = np.radians(lat[i-1])
+        lat2_rad = np.radians(lat[i])
         y = np.sin(dlon) * np.cos(lat2_rad)
         x = np.cos(lat1_rad) * np.sin(lat2_rad) - np.sin(lat1_rad) * np.cos(lat2_rad) * np.cos(dlon)
-        headings.append(np.degrees(np.arctan2(y, x)))
-    df['heading'] = headings
-    df['delta_heading'] = df['heading'].diff().fillna(0).apply(lambda x: x-360 if x>180 else (x+360 if x<-180 else x))
+        heading.append(np.degrees(np.arctan2(y, x)))
 
-    def classify(row):
-        mtypes = []
-        if row['delta_distance'] < -1:
-            mtypes.append('Approaching')
-        elif row['delta_distance'] > 1:
-            mtypes.append('Departing')
-        if row['delta_speed'] > 2:
-            mtypes.append('Accelerating')
-        elif row['delta_speed'] < -2:
-            mtypes.append('Decelerating')
-        if abs(row['delta_heading']) > 15:
-            mtypes.append('Turning')
-        if row['speed'] < 1:
-            mtypes.append('Hovering')
-        if not mtypes:
-            mtypes = ['Cruising']
-        return ','.join(mtypes)
+    speed = np.array(dist3d) / np.where(dt == 0, 1, dt)
+    delta_speed = np.insert(np.diff(speed), 0, 0)
 
-    df['pixel_movement_type'] = df.apply(classify, axis=1)
+    heading = np.array(heading)
+    delta_heading = np.insert(np.diff(heading), 0, 0)
+    delta_heading = (delta_heading + 180) % 360 - 180
 
-    df = df.rename(columns={'parsed_time':'time','GPS Lat':'lat','GPS Lon':'lon','GPS Alt':'alt'})
-    keep_cols = ['time','lat','lon','alt','distance_to_sensor','delta_distance','speed',
-                 'delta_speed','heading','delta_heading','pixel_movement_type']
-    extra_cols = [c for c in ['Sensor Type','Doppler Type','Time'] if c in df.columns]
-    return df[extra_cols + keep_cols]
+    dist_to_sensor = []
+    for la, lo, al in zip(lat, lon, alt):
+        d2d = geodesic((la, lo), (sensor_lat, sensor_lon)).meters
+        dist_to_sensor.append(np.sqrt(d2d**2 + (al - sensor_alt)**2))
+    dist_to_sensor = np.array(dist_to_sensor)
+    delta_dist = np.insert(np.diff(dist_to_sensor), 0, 0)
+
+    movement = []
+    for i in range(len(df)):
+        if abs(delta_heading[i]) > 15:
+            movement.append('turning')
+        elif delta_dist[i] < -1:
+            movement.append('approaching')
+        elif delta_dist[i] > 1:
+            movement.append('departing')
+        elif delta_speed[i] > 2:
+            movement.append('accelerating')
+        elif delta_speed[i] < -2:
+            movement.append('decelerating')
+        elif speed[i] < 1:
+            movement.append('hovering')
+        else:
+            movement.append('cruising')
+
+    result = pd.DataFrame({
+        'parsed_time': df['parsed_time'],
+        'lat': lat,
+        'lon': lon,
+        'alt': alt,
+        'dt': dt,
+        'dist3d': dist3d,
+        'speed': speed,
+        'delta_speed': delta_speed,
+        'heading': heading,
+        'delta_heading': delta_heading,
+        'dist_to_sensor': dist_to_sensor,
+        'delta_dist': delta_dist,
+        'movement_type': movement
+    })
+
+    extra_cols = [c for c in ['Sensor Type', 'Doppler Type', 'Time'] if c in df.columns]
+    return pd.concat([df[extra_cols].reset_index(drop=True), result], axis=1)
 
 
 def analyze_sensor_detection_by_movement(pixel_dict, flight, pixels=None, sensor_types=None):
@@ -528,6 +533,36 @@ def get_image_data(path):
                 print(f"Error loading image {try_path}: {e}")
                 continue
 
+    return None
+
+
+def load_graph_image(pixel_id, flight_num, graphs_dir):
+    """Return base64 image for a pixel's donut graph if available."""
+    if not graphs_dir:
+        return None
+    fname = f"donut_pixel_{pixel_id}_flight_{flight_num}.png"
+    paths = [
+        os.path.join(graphs_dir, fname),
+        os.path.join(graphs_dir, 'GRAPHS', fname)
+    ]
+    for p in paths:
+        if os.path.exists(p):
+            return get_image_data(p)
+    return None
+
+
+def load_type_coverage_image(detection_type, flight_num, graphs_dir):
+    """Return base64 image for a sensor type coverage graph if available."""
+    if not graphs_dir:
+        return None
+    fname = f"coverage_type_{detection_type}_fl_{flight_num}.png"
+    paths = [
+        os.path.join(graphs_dir, fname),
+        os.path.join(graphs_dir, 'GRAPHS', fname)
+    ]
+    for p in paths:
+        if os.path.exists(p):
+            return get_image_data(p)
     return None
 
 
@@ -1699,18 +1734,14 @@ def update_movement_images(flight, view_mode, selection):
     imgs = []
     if view_mode == 'individual':
         for px in selection:
-            file_path = os.path.join(graphs_dir, 'GRAPHS', f'donut_pixel_{px}_flight_{flight}.png')
-            if os.path.exists(file_path):
-                uri = get_image_data(file_path)
-                if uri:
-                    imgs.append(html.Img(src=uri, style={'maxWidth': '100%', 'height': 'auto'}, className='mb-3'))
+            uri = load_graph_image(px, flight, graphs_dir)
+            if uri:
+                imgs.append(html.Img(src=uri, style={'maxWidth': '100%', 'height': 'auto'}, className='mb-3'))
     else:
         for stype in selection:
-            file_path = os.path.join(graphs_dir, 'GRAPHS', f'coverage_type_{stype}_fl_{flight}.png')
-            if os.path.exists(file_path):
-                uri = get_image_data(file_path)
-                if uri:
-                    imgs.append(html.Img(src=uri, style={'maxWidth': '100%', 'height': 'auto'}, className='mb-3'))
+            uri = load_type_coverage_image(stype, flight, graphs_dir)
+            if uri:
+                imgs.append(html.Img(src=uri, style={'maxWidth': '100%', 'height': 'auto'}, className='mb-3'))
 
     if not imgs:
         return html.Small("No graphs available", className="text-muted")
