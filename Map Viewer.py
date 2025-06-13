@@ -271,8 +271,8 @@ def calculate_flight_dynamics(flight_df, sensor_lat=None, sensor_lon=None):
     return flight_df
 
 
-def analyze_sensor_detection_by_movement(df_sum, flight_df):
-    """Analyze which movement patterns are detected by sensors."""
+def analyze_sensor_detection_by_movement(pixel_dict, flight):
+    """Analyze movement types relative to pixel detections for a flight."""
     detection_analysis = {
         'movement_type': [],
         'total_points': [],
@@ -281,46 +281,34 @@ def analyze_sensor_detection_by_movement(df_sum, flight_df):
         'avg_distance': []
     }
 
-    if ('movement_type' not in flight_df.columns and 'relative_movement' not in flight_df.columns) or flight_df.empty:
+    counts = {}
+    total_points = 0
+
+    for (fl, px), windows in pixel_dict.items():
+        if fl != flight:
+            continue
+        for coords, meta, _ in windows:
+            for m in meta:
+                mv = m.get('relative_movement', 'unknown')
+                dist = m.get('dist3D', 0)
+                if pd.isna(dist):
+                    dist = 0
+                if mv not in counts:
+                    counts[mv] = {'count': 0, 'dist_sum': 0.0}
+                counts[mv]['count'] += 1
+                counts[mv]['dist_sum'] += dist
+                total_points += 1
+
+    if total_points == 0:
         return pd.DataFrame(detection_analysis)
 
-    # Get the flight number from the dataframe
-    if 'Flight number' in flight_df.columns:
-        flight_num = flight_df['Flight number'].iloc[0]
-    else:
-        # Try to extract from other available data
-        flight_num = df_sum['Flight number'].iloc[0] if not df_sum.empty else 1
-
-    movement_col = 'relative_movement' if 'relative_movement' in flight_df.columns else 'movement_type'
-    movement_types = flight_df[movement_col].unique()
-
-    for mov_type in movement_types:
-        mov_points = flight_df[flight_df[movement_col] == mov_type]
-        total = len(mov_points)
-
-        # Find detections during this movement type
-        detected = 0
-        distances = []
-
-        for _, point in mov_points.iterrows():
-            if 'Time' in point:
-                # Check if this time point has sensor detections
-                detections = df_sum[
-                    (df_sum['Flight number'] == flight_num) &
-                    (pd.to_datetime(df_sum['Start time']) <= pd.to_datetime(point['Time'])) &
-                    (pd.to_datetime(df_sum['End time']) >= pd.to_datetime(point['Time']))
-                    ]
-
-                if not detections.empty:
-                    detected += 1
-                    if 'min_dist3D' in detections.columns:
-                        distances.extend(detections['min_dist3D'].values)
-
-        detection_analysis['movement_type'].append(mov_type)
-        detection_analysis['total_points'].append(total)
-        detection_analysis['detected_points'].append(detected)
-        detection_analysis['detection_rate'].append(detected / total * 100 if total > 0 else 0)
-        detection_analysis['avg_distance'].append(np.mean(distances) if distances else 0)
+    for mv, data in counts.items():
+        detection_analysis['movement_type'].append(mv)
+        detection_analysis['total_points'].append(total_points)
+        detection_analysis['detected_points'].append(data['count'])
+        detection_analysis['detection_rate'].append(data['count'] / total_points * 100)
+        avg_dist = data['dist_sum'] / data['count'] if data['count'] > 0 else 0
+        detection_analysis['avg_distance'].append(avg_dist)
 
     return pd.DataFrame(detection_analysis)
 
@@ -852,8 +840,7 @@ def render_content_from_buttons(btn_map, btn_3d, btn_movement, btn_analytics, bt
                         id='3d-options',
                         options=[
                             {'label': ' Show Sensor Detections', 'value': 'detections'},
-                            {'label': ' Color by Speed', 'value': 'speed'},
-                            {'label': ' Show Movement Types', 'value': 'movement'}
+                            {'label': ' Color by Speed', 'value': 'speed'}
                         ],
                         value=['detections'],
                         inline=True
@@ -1329,47 +1316,50 @@ def update_3d_view(flight, options):
         return fig
 
     try:
-        # Load flight data
         flight_path = os.path.join(trace_dir, f"Flight_{flight}_logs.csv")
         flight_df = pd.read_csv(flight_path)
 
-        # Add flight number to dataframe
         flight_df['Flight number'] = flight
 
-        # Calculate dynamics
         flight_df = calculate_flight_dynamics(flight_df)
 
         fig = go.Figure()
 
-        # Main flight path
         if 'speed' in (options or []) and 'speed_smooth' in flight_df.columns:
-            fig.add_trace(go.Scattermapbox(
-                lon=flight_df['GPS Lon'],
-                lat=flight_df['GPS Lat'],
+            fig.add_trace(go.Scatter3d(
+                x=flight_df['GPS Lon'],
+                y=flight_df['GPS Lat'],
+                z=flight_df['GPS Alt'],
                 mode='lines+markers',
                 name='Flight Path',
-                line=dict(width=4, color=flight_df['speed_smooth'], colorscale='Viridis'),
-                marker=dict(size=5, color=flight_df['speed_smooth'], colorscale='Viridis')
+                line=dict(
+                    color=flight_df['speed_smooth'],
+                    colorscale='Viridis',
+                    width=4,
+                    colorbar=dict(title="Speed (m/s)")
+                ),
+                marker=dict(size=3)
             ))
         else:
-            fig.add_trace(go.Scattermapbox(
-                lon=flight_df['GPS Lon'],
-                lat=flight_df['GPS Lat'],
+            fig.add_trace(go.Scatter3d(
+                x=flight_df['GPS Lon'],
+                y=flight_df['GPS Lat'],
+                z=flight_df['GPS Alt'],
                 mode='lines+markers',
                 name='Flight Path',
                 line=dict(color='cyan', width=4),
-                marker=dict(size=5)
+                marker=dict(size=3)
             ))
 
-        # Add sensor detections
         if 'detections' in (options or []):
             flight_events = df_sum[df_sum['Flight number'] == flight]
             if not flight_events.empty:
                 for stype in flight_events['Sensor Type'].unique():
                     type_events = flight_events[flight_events['Sensor Type'] == stype]
-                    fig.add_trace(go.Scattermapbox(
-                        lon=type_events['Sensor Lon'],
-                        lat=type_events['Sensor Lat'],
+                    fig.add_trace(go.Scatter3d(
+                        x=type_events['Sensor Lon'],
+                        y=type_events['Sensor Lat'],
+                        z=[flight_df['GPS Alt'].mean()] * len(type_events),
                         mode='markers',
                         name=f'Sensor {stype}',
                         marker=dict(size=8, color=type_colors.get(stype, '#FF0000'), symbol='diamond')
@@ -1387,41 +1377,25 @@ def update_3d_view(flight, options):
             for mov_type, color in movement_colors.items():
                 mov_df = flight_df[flight_df['movement_type'] == mov_type]
                 if not mov_df.empty:
-                    fig.add_trace(go.Scattermapbox(
-                        lon=mov_df['GPS Lon'],
-                        lat=mov_df['GPS Lat'],
+                    fig.add_trace(go.Scatter3d(
+                        x=mov_df['GPS Lon'],
+                        y=mov_df['GPS Lat'],
+                        z=mov_df['GPS Alt'],
                         mode='markers',
                         name=mov_type.capitalize(),
-                        marker=dict(size=6, color=color)
+                        marker=dict(size=5, color=color, symbol='circle')
                     ))
 
-        center_lat = flight_df['GPS Lat'].mean()
-        center_lon = flight_df['GPS Lon'].mean()
-
-        mapbox_token = os.environ.get('MAPBOX_TOKEN')
-        if mapbox_token:
-            fig.update_layout(
-                mapbox=dict(
-                    style='satellite',
-                    center=dict(lat=center_lat, lon=center_lon),
-                    zoom=13,
-                    pitch=60,
-                    accesstoken=mapbox_token
-                ),
-                title=f"3D Flight Map - Flight {flight}",
-                height=700
-            )
-        else:
-            fig.update_layout(
-                mapbox_style='open-street-map',
-                mapbox=dict(
-                    center=dict(lat=center_lat, lon=center_lon),
-                    zoom=13,
-                    pitch=60
-                ),
-                title=f"3D Flight Map - Flight {flight}",
-                height=700
-            )
+        fig.update_layout(
+            title=f"3D Flight Path - Flight {flight}",
+            scene=dict(
+                xaxis_title="Longitude",
+                yaxis_title="Latitude",
+                zaxis_title="Altitude (m)",
+                camera=dict(eye=dict(x=1.5, y=1.5, z=1.5))
+            ),
+            height=700
+        )
 
         return fig
 
@@ -1503,7 +1477,7 @@ def update_movement_analysis(flight):
         timeline_fig.update_layout(height=600, showlegend=False, title=f"Flight Dynamics - Flight {flight}")
 
         # Detection by movement type
-        detection_analysis = analyze_sensor_detection_by_movement(df_sum[df_sum['Flight number'] == flight], flight_df)
+        detection_analysis = analyze_sensor_detection_by_movement(dict_pixel, flight)
 
         if not detection_analysis.empty:
             detection_fig = go.Figure(data=[
