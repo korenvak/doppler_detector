@@ -55,7 +55,12 @@ def compute_spectrogram(y, sr, filepath, params):
     Sxx_dB = 10.0 * np.log10(Sxx + 1e-10)
 
     # 3) normalize
-    Sxx_norm = (Sxx_dB - Sxx_dB.min()) / (Sxx_dB.max() - Sxx_dB.min())
+    range_db = Sxx_dB.max() - Sxx_dB.min()
+    if range_db <= 0:
+        Sxx_norm = np.zeros_like(Sxx_dB)
+    else:
+        Sxx_norm = (Sxx_dB - Sxx_dB.min()) / range_db
+    Sxx_norm = np.clip(Sxx_norm, 0.0, 1.0)
 
     # 4) smooth + median filter
     sigma      = params.get("smooth_sigma", 1.5)
