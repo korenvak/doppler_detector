@@ -610,6 +610,36 @@ def generate_color_schemes():
 
 pixel_colors, type_colors = generate_color_schemes()
 
+# Color map for movement classifications
+MOVEMENT_COLORS = {
+    'approaching': '#2ecc71',  # green
+    'departing': '#e74c3c',   # red
+    'hovering': '#9b59b6',    # purple
+    'accelerating': '#f39c12',  # orange
+    'decelerating': '#3498db',  # blue
+    'turning': '#f1c40f',      # yellow
+    'cruising': '#95a5a6'      # gray
+}
+
+def generate_movement_legend():
+    """Return an HTML legend explaining movement colors."""
+    items = []
+    for name, col in MOVEMENT_COLORS.items():
+        items.append(
+            html.Span(
+                [html.Span(style={'display': 'inline-block',
+                                 'width': '12px',
+                                 'height': '12px',
+                                 'backgroundColor': col,
+                                 'marginRight': '6px'}),
+                 name.capitalize()],
+                className="me-3"
+            )
+        )
+    return html.Div(items, className="small")
+
+movement_legend = generate_movement_legend()
+
 # ----------------------------
 # 7) Prepare data for dashboard
 # ----------------------------
@@ -923,7 +953,8 @@ def render_content_from_buttons(btn_map, btn_3d, btn_movement, btn_analytics, bt
                     )
                 ],
                 style={'width': '100%', 'height': '70vh', 'border-radius': '8px', 'border': '1px solid #dee2e6'}
-            )
+            ),
+            html.Div(movement_legend, className="mt-2")
         ])
 
     elif active_tab == "3d":
@@ -1239,13 +1270,14 @@ def update_map(flight, view_mode, selection, display_options):
                         )
 
                     marker_id = f"marker-{px}-{flight}-{window_idx}-{i}"
+                    mv_col = MOVEMENT_COLORS.get(m.get('pixel_movement_type', 'cruising'), col)
                     layers.append(dl.CircleMarker(
                         id=marker_id,
                         center=[lat, lon],
                         radius=marker_size,
-                        color=col,
+                        color=mv_col,
                         fill=True,
-                        fillColor=col,
+                        fillColor=mv_col,
                         fillOpacity=0.8,
                         weight=2,
                         children=[dl.Popup(popup_content, maxWidth=400)]
@@ -1345,13 +1377,14 @@ def update_map(flight, view_mode, selection, display_options):
                         ])
 
                         marker_id = f"type-marker-{stype}-{px}-{window_idx}-{i}"
+                        mv_col = MOVEMENT_COLORS.get(m.get('pixel_movement_type', 'cruising'), col)
                         layers.append(dl.CircleMarker(
                             id=marker_id,
                             center=[lat, lon],
                             radius=4,
-                            color=col,
+                            color=mv_col,
                             fill=True,
-                            fillColor=col,
+                            fillColor=mv_col,
                             fillOpacity=0.8,
                             children=[dl.Popup(popup_content, maxWidth=400)]
                         ))
@@ -1430,22 +1463,29 @@ def update_3d_view(flight, options):
         fig = go.Figure()
 
         if 'speed' in (options or []) and 'speed_smooth' in flight_df.columns:
-            fig.add_trace(go.Scattermapbox(
-                lon=flight_df['GPS Lon'],
-                lat=flight_df['GPS Lat'],
+            fig.add_trace(go.Scatter3d(
+                x=flight_df['GPS Lon'],
+                y=flight_df['GPS Lat'],
+                z=flight_df['GPS Alt'],
                 mode='lines+markers',
                 name='Flight Path',
-                line=dict(color=flight_df['speed_smooth'], colorscale='Viridis', width=4),
-                marker=dict(size=4, color=flight_df['speed_smooth'], colorscale='Viridis', colorbar=dict(title="Speed (m/s)"))
+                line=dict(
+                    color=flight_df['speed_smooth'],
+                    colorscale='Viridis',
+                    width=4,
+                    colorbar=dict(title="Speed (m/s)")
+                ),
+                marker=dict(size=3)
             ))
         else:
-            fig.add_trace(go.Scattermapbox(
-                lon=flight_df['GPS Lon'],
-                lat=flight_df['GPS Lat'],
+            fig.add_trace(go.Scatter3d(
+                x=flight_df['GPS Lon'],
+                y=flight_df['GPS Lat'],
+                z=flight_df['GPS Alt'],
                 mode='lines+markers',
                 name='Flight Path',
                 line=dict(color='cyan', width=4),
-                marker=dict(size=4, color='cyan')
+                marker=dict(size=3)
             ))
 
         if 'detections' in (options or []):
@@ -1453,27 +1493,30 @@ def update_3d_view(flight, options):
             if not flight_events.empty:
                 for stype in flight_events['Sensor Type'].unique():
                     type_events = flight_events[flight_events['Sensor Type'] == stype]
-                    fig.add_trace(go.Scattermapbox(
-                        lon=type_events['Sensor Lon'],
-                        lat=type_events['Sensor Lat'],
+                    fig.add_trace(go.Scatter3d(
+                        x=type_events['Sensor Lon'],
+                        y=type_events['Sensor Lat'],
+                        z=[0] * len(type_events),
                         mode='markers',
                         name=f'Sensor {stype}',
-                        marker=dict(size=8, color=type_colors.get(stype, '#FF0000'), symbol='diamond')
+                        marker=dict(
+                            size=8,
+                            color=type_colors.get(stype, '#FF0000'),
+                            symbol='diamond'
+                        )
                     ))
 
-        center_lat = flight_df['GPS Lat'].mean()
-        center_lon = flight_df['GPS Lon'].mean()
-
         fig.update_layout(
-            mapbox=dict(
-                style="open-street-map",
-                center=dict(lat=center_lat, lon=center_lon),
-                zoom=12,
-                pitch=60,
+            title=f"3D Flight Path - Flight {flight}",
+            scene=dict(
+                xaxis_title="Longitude",
+                yaxis_title="Latitude",
+                zaxis_title="Altitude (m)",
+                camera=dict(
+                    eye=dict(x=1.5, y=1.5, z=1.5)
+                )
             ),
-            height=700,
-            title=f"3D Map - Flight {flight}",
-            margin=dict(l=0, r=0, t=40, b=0)
+            height=700
         )
 
         return fig
