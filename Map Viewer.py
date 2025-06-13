@@ -173,7 +173,9 @@ def calculate_flight_dynamics(flight_df, sensor_lat=None, sensor_lon=None):
 
     # Calculate time differences
     if 'Time' in flight_df.columns:
-        flight_df['parsed_time'] = pd.to_datetime(flight_df['Time'], errors='coerce')
+        flight_df['parsed_time'] = pd.to_datetime(
+            flight_df['Time'], errors='coerce', infer_datetime_format=True
+        )
         if flight_df['parsed_time'].isna().sum() > len(flight_df) * 0.5:
             flight_df['parsed_time'] = pd.date_range(start='2020-01-01', periods=len(flight_df), freq='S')
         flight_df['time_diff'] = flight_df['parsed_time'].diff().dt.total_seconds()
@@ -182,12 +184,19 @@ def calculate_flight_dynamics(flight_df, sensor_lat=None, sensor_lon=None):
         flight_df['time_diff'] = 1.0
 
     # Calculate distances between consecutive points (3D)
-    coords = flight_df[['GPS Lat', 'GPS Lon', 'GPS Alt']].values
+    coord_cols = ['GPS Lat', 'GPS Lon']
+    if 'GPS Alt' in flight_df.columns:
+        coord_cols.append('GPS Alt')
+    coords = flight_df[coord_cols].values
     distances = [0]
     from geopy.distance import geodesic
     for i in range(1, len(coords)):
-        dist_2d = geodesic((coords[i-1][0], coords[i-1][1]), (coords[i][0], coords[i][1])).meters
-        dist_3d = np.sqrt(dist_2d**2 + (coords[i][2] - coords[i-1][2])**2)
+        lat1, lon1 = coords[i-1][:2]
+        lat2, lon2 = coords[i][:2]
+        alt1 = coords[i-1][2] if len(coords[i-1]) > 2 else 0
+        alt2 = coords[i][2] if len(coords[i]) > 2 else 0
+        dist_2d = geodesic((lat1, lon1), (lat2, lon2)).meters
+        dist_3d = np.sqrt(dist_2d**2 + (alt2 - alt1)**2)
         distances.append(dist_3d)
 
     flight_df['distance'] = distances
@@ -218,7 +227,9 @@ def calculate_flight_dynamics(flight_df, sensor_lat=None, sensor_lon=None):
         from geopy.distance import geodesic
         sensor_coord = (sensor_lat, sensor_lon)
         dist_sensor = []
-        for lat, lon, alt in coords:
+        for row in coords:
+            lat, lon = row[:2]
+            alt = row[2] if len(row) > 2 else 0
             dist_2d = geodesic(sensor_coord, (lat, lon)).meters
             dist_sensor.append(np.sqrt(dist_2d**2 + alt**2))
         flight_df['dist_to_sensor'] = dist_sensor
@@ -280,7 +291,9 @@ def calculate_flight_dynamics(flight_df, sensor_lat=None, sensor_lon=None):
 def calculate_relative_movement_to_pixel(df_flight, sensor_lat, sensor_lon, start_time, end_time):
     """Classify movement relative to a pixel's sensor."""
     df = df_flight.copy()
-    df['parsed_time'] = pd.to_datetime(df.get('Time'), errors='coerce')
+    df['parsed_time'] = pd.to_datetime(
+        df.get('Time'), errors='coerce', infer_datetime_format=True
+    )
     start = pd.to_datetime(start_time)
     end = pd.to_datetime(end_time)
     df = df[(df['parsed_time'] >= start) & (df['parsed_time'] <= end)].reset_index(drop=True)
@@ -289,13 +302,18 @@ def calculate_relative_movement_to_pixel(df_flight, sensor_lat, sensor_lon, star
 
     df['time_diff'] = df['parsed_time'].diff().dt.total_seconds().fillna(1)
 
-    coords = df[['GPS Lat', 'GPS Lon', 'GPS Alt']].values
+    coord_cols = ['GPS Lat', 'GPS Lon']
+    if 'GPS Alt' in df.columns:
+        coord_cols.append('GPS Alt')
+    coords = df[coord_cols].values
     from geopy.distance import geodesic
 
     # distance to sensor
     sensor_coord = (sensor_lat, sensor_lon)
     dist_to_sensor = []
-    for lat, lon, alt in coords:
+    for row in coords:
+        lat, lon = row[:2]
+        alt = row[2] if len(row) > 2 else 0
         d2d = geodesic((lat, lon), sensor_coord).meters
         dist_to_sensor.append(np.sqrt(d2d**2 + alt**2))
     df['distance_to_sensor'] = dist_to_sensor
@@ -304,8 +322,12 @@ def calculate_relative_movement_to_pixel(df_flight, sensor_lat, sensor_lon, star
     # path distance and speed
     dist_path = [0]
     for i in range(1, len(coords)):
-        d2d = geodesic((coords[i-1][0], coords[i-1][1]), (coords[i][0], coords[i][1])).meters
-        d3d = np.sqrt(d2d**2 + (coords[i][2] - coords[i-1][2])**2)
+        lat1, lon1 = coords[i-1][:2]
+        lat2, lon2 = coords[i][:2]
+        alt1 = coords[i-1][2] if len(coords[i-1]) > 2 else 0
+        alt2 = coords[i][2] if len(coords[i]) > 2 else 0
+        d2d = geodesic((lat1, lon1), (lat2, lon2)).meters
+        d3d = np.sqrt(d2d**2 + (alt2 - alt1)**2)
         dist_path.append(d3d)
     df['dist3d'] = dist_path
     df['speed'] = df['dist3d'] / df['time_diff'].replace(0, 1)
@@ -1155,6 +1177,7 @@ def update_map(flight, view_mode, selection, display_options):
             col = pixel_colors.get(px, '#0066CC')
 
             for window_idx, (coords, meta, snapshot) in enumerate(windows):
+                img_uri = get_image_data(snapshot)
                 trace_id = f"trace-{px}-{flight}-{window_idx}"
                 layers.append(dl.Polyline(
                     id=trace_id,
@@ -1200,7 +1223,6 @@ def update_map(flight, view_mode, selection, display_options):
                         ], style={"maxWidth": "350px"})
                     ])
 
-                    img_uri = get_image_data(snapshot) if i == 0 else None
                     if img_uri:
                         popup_content.children[0].children[1].children.append(
                             html.Img(
@@ -1408,29 +1430,22 @@ def update_3d_view(flight, options):
         fig = go.Figure()
 
         if 'speed' in (options or []) and 'speed_smooth' in flight_df.columns:
-            fig.add_trace(go.Scatter3d(
-                x=flight_df['GPS Lon'],
-                y=flight_df['GPS Lat'],
-                z=flight_df['GPS Alt'],
+            fig.add_trace(go.Scattermapbox(
+                lon=flight_df['GPS Lon'],
+                lat=flight_df['GPS Lat'],
                 mode='lines+markers',
                 name='Flight Path',
-                line=dict(
-                    color=flight_df['speed_smooth'],
-                    colorscale='Viridis',
-                    width=4,
-                    colorbar=dict(title="Speed (m/s)")
-                ),
-                marker=dict(size=3)
+                line=dict(color=flight_df['speed_smooth'], colorscale='Viridis', width=4),
+                marker=dict(size=4, color=flight_df['speed_smooth'], colorscale='Viridis', colorbar=dict(title="Speed (m/s)"))
             ))
         else:
-            fig.add_trace(go.Scatter3d(
-                x=flight_df['GPS Lon'],
-                y=flight_df['GPS Lat'],
-                z=flight_df['GPS Alt'],
+            fig.add_trace(go.Scattermapbox(
+                lon=flight_df['GPS Lon'],
+                lat=flight_df['GPS Lat'],
                 mode='lines+markers',
                 name='Flight Path',
                 line=dict(color='cyan', width=4),
-                marker=dict(size=3)
+                marker=dict(size=4, color='cyan')
             ))
 
         if 'detections' in (options or []):
@@ -1438,45 +1453,27 @@ def update_3d_view(flight, options):
             if not flight_events.empty:
                 for stype in flight_events['Sensor Type'].unique():
                     type_events = flight_events[flight_events['Sensor Type'] == stype]
-                    fig.add_trace(go.Scatter3d(
-                        x=type_events['Sensor Lon'],
-                        y=type_events['Sensor Lat'],
-                        z=[0] * len(type_events),
+                    fig.add_trace(go.Scattermapbox(
+                        lon=type_events['Sensor Lon'],
+                        lat=type_events['Sensor Lat'],
                         mode='markers',
                         name=f'Sensor {stype}',
                         marker=dict(size=8, color=type_colors.get(stype, '#FF0000'), symbol='diamond')
                     ))
 
-        if 'movement' in (options or []) and 'movement_type' in flight_df.columns:
-            movement_colors = {
-                'cruising': 'blue',
-                'accelerating': 'green',
-                'decelerating': 'red',
-                'turning': 'orange',
-                'hovering': 'purple'
-            }
-
-            for mov_type, color in movement_colors.items():
-                mov_df = flight_df[flight_df['movement_type'] == mov_type]
-                if not mov_df.empty:
-                    fig.add_trace(go.Scatter3d(
-                        x=mov_df['GPS Lon'],
-                        y=mov_df['GPS Lat'],
-                        z=mov_df['GPS Alt'],
-                        mode='markers',
-                        name=mov_type.capitalize(),
-                        marker=dict(size=5, color=color, symbol='circle')
-                    ))
+        center_lat = flight_df['GPS Lat'].mean()
+        center_lon = flight_df['GPS Lon'].mean()
 
         fig.update_layout(
-            title=f"3D Flight Path - Flight {flight}",
-            scene=dict(
-                xaxis_title="Longitude",
-                yaxis_title="Latitude",
-                zaxis_title="Altitude (m)",
-                camera=dict(eye=dict(x=1.5, y=1.5, z=1.5))
+            mapbox=dict(
+                style="open-street-map",
+                center=dict(lat=center_lat, lon=center_lon),
+                zoom=12,
+                pitch=60,
             ),
-            height=700
+            height=700,
+            title=f"3D Map - Flight {flight}",
+            margin=dict(l=0, r=0, t=40, b=0)
         )
 
         return fig
