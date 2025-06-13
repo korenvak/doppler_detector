@@ -171,38 +171,42 @@ def calculate_flight_dynamics(flight_df, sensor_lat=None, sensor_lon=None):
 
     flight_df = flight_df.copy()
 
-    # Calculate time differences (assuming Time column exists)
+    # Calculate time differences
     if 'Time' in flight_df.columns:
-        flight_df['time_diff'] = pd.to_datetime(
-            flight_df['Time'], errors='coerce'
-        ).diff().dt.total_seconds()
+        flight_df['parsed_time'] = pd.to_datetime(flight_df['Time'], errors='coerce')
+        if flight_df['parsed_time'].isna().sum() > len(flight_df) * 0.5:
+            flight_df['parsed_time'] = pd.date_range(start='2020-01-01', periods=len(flight_df), freq='S')
+        flight_df['time_diff'] = flight_df['parsed_time'].diff().dt.total_seconds()
     else:
-        # If no time column, assume 1 second intervals
+        flight_df['parsed_time'] = pd.date_range(start='2020-01-01', periods=len(flight_df), freq='S')
         flight_df['time_diff'] = 1.0
 
-    # Calculate distances between consecutive points
-    coords = flight_df[['GPS Lat', 'GPS Lon']].values
-    distances = []
+    # Calculate distances between consecutive points (3D)
+    coords = flight_df[['GPS Lat', 'GPS Lon', 'GPS Alt']].values
+    distances = [0]
+    from geopy.distance import geodesic
     for i in range(1, len(coords)):
-        from geopy.distance import geodesic
-        distances.append(geodesic(coords[i - 1], coords[i]).meters)
-    distances = [0] + distances  # First point has 0 distance
+        dist_2d = geodesic((coords[i-1][0], coords[i-1][1]), (coords[i][0], coords[i][1])).meters
+        dist_3d = np.sqrt(dist_2d**2 + (coords[i][2] - coords[i-1][2])**2)
+        distances.append(dist_3d)
 
     flight_df['distance'] = distances
 
     # Calculate speed (m/s)
-    flight_df['speed'] = flight_df['distance'] / flight_df['time_diff'].fillna(1)
+    flight_df['speed'] = flight_df['distance'] / flight_df['time_diff'].replace(0, 1)
     flight_df['speed'] = flight_df['speed'].fillna(0)
 
     # Smooth speed using Savitzky-Golay filter if enough points
     if len(flight_df) > 10:
-        window_length = min(11, len(flight_df) if len(flight_df) % 2 == 1 else len(flight_df) - 1)
-        if window_length >= 3:  # Ensure window length is at least 3
-            flight_df['speed_smooth'] = savgol_filter(flight_df['speed'].fillna(0),
-                                                      window_length=window_length,
-                                                      polyorder=min(3, window_length - 1))
-        else:
-            flight_df['speed_smooth'] = flight_df['speed']
+        window_length = min(11, len(flight_df))
+        if window_length % 2 == 0:
+            window_length -= 1
+        window_length = max(3, window_length)
+        flight_df['speed_smooth'] = savgol_filter(
+            flight_df['speed'].fillna(0),
+            window_length=window_length,
+            polyorder=min(3, window_length - 1)
+        )
     else:
         flight_df['speed_smooth'] = flight_df['speed']
 
@@ -213,9 +217,11 @@ def calculate_flight_dynamics(flight_df, sensor_lat=None, sensor_lon=None):
     if sensor_lat is not None and sensor_lon is not None:
         from geopy.distance import geodesic
         sensor_coord = (sensor_lat, sensor_lon)
-        flight_df['dist_to_sensor'] = [
-            geodesic(sensor_coord, (lat, lon)).meters for lat, lon in coords
-        ]
+        dist_sensor = []
+        for lat, lon, alt in coords:
+            dist_2d = geodesic(sensor_coord, (lat, lon)).meters
+            dist_sensor.append(np.sqrt(dist_2d**2 + alt**2))
+        flight_df['dist_to_sensor'] = dist_sensor
         flight_df['dist_change'] = flight_df['dist_to_sensor'].diff().fillna(0)
         flight_df['relative_movement'] = flight_df['dist_change'].apply(
             lambda d: 'approaching' if d < -1 else (
@@ -271,6 +277,77 @@ def calculate_flight_dynamics(flight_df, sensor_lat=None, sensor_lon=None):
     return flight_df
 
 
+def calculate_relative_movement_to_pixel(df_flight, sensor_lat, sensor_lon, start_time, end_time):
+    """Classify movement relative to a pixel's sensor."""
+    df = df_flight.copy()
+    df['parsed_time'] = pd.to_datetime(df.get('Time'), errors='coerce')
+    start = pd.to_datetime(start_time)
+    end = pd.to_datetime(end_time)
+    df = df[(df['parsed_time'] >= start) & (df['parsed_time'] <= end)].reset_index(drop=True)
+    if df.empty:
+        return pd.DataFrame(columns=['time','lat','lon','alt','distance_to_sensor','delta_distance','speed','delta_speed','heading','delta_heading','pixel_movement_type'])
+
+    df['time_diff'] = df['parsed_time'].diff().dt.total_seconds().fillna(1)
+
+    coords = df[['GPS Lat', 'GPS Lon', 'GPS Alt']].values
+    from geopy.distance import geodesic
+
+    # distance to sensor
+    sensor_coord = (sensor_lat, sensor_lon)
+    dist_to_sensor = []
+    for lat, lon, alt in coords:
+        d2d = geodesic((lat, lon), sensor_coord).meters
+        dist_to_sensor.append(np.sqrt(d2d**2 + alt**2))
+    df['distance_to_sensor'] = dist_to_sensor
+    df['delta_distance'] = df['distance_to_sensor'].diff().fillna(0)
+
+    # path distance and speed
+    dist_path = [0]
+    for i in range(1, len(coords)):
+        d2d = geodesic((coords[i-1][0], coords[i-1][1]), (coords[i][0], coords[i][1])).meters
+        d3d = np.sqrt(d2d**2 + (coords[i][2] - coords[i-1][2])**2)
+        dist_path.append(d3d)
+    df['dist3d'] = dist_path
+    df['speed'] = df['dist3d'] / df['time_diff'].replace(0, 1)
+    df['delta_speed'] = df['speed'].diff().fillna(0)
+
+    # heading
+    headings = [0]
+    for i in range(1, len(coords)):
+        lat1, lon1 = coords[i-1][:2]
+        lat2, lon2 = coords[i][:2]
+        dlon = np.radians(lon2 - lon1)
+        lat1_rad = np.radians(lat1)
+        lat2_rad = np.radians(lat2)
+        y = np.sin(dlon) * np.cos(lat2_rad)
+        x = np.cos(lat1_rad) * np.sin(lat2_rad) - np.sin(lat1_rad) * np.cos(lat2_rad) * np.cos(dlon)
+        headings.append(np.degrees(np.arctan2(y, x)))
+    df['heading'] = headings
+    df['delta_heading'] = df['heading'].diff().fillna(0).apply(lambda x: x-360 if x>180 else (x+360 if x<-180 else x))
+
+    def classify(r):
+        if r['delta_distance'] < -1:
+            return 'approaching'
+        if r['delta_distance'] > 1:
+            return 'departing'
+        if r['speed'] < 1:
+            return 'hovering'
+        if r['delta_speed'] > 2:
+            return 'accelerating'
+        if r['delta_speed'] < -2:
+            return 'decelerating'
+        if abs(r['delta_heading']) > 15:
+            return 'turning'
+        return 'cruising'
+
+    df['pixel_movement_type'] = df.apply(classify, axis=1)
+
+    df = df.rename(columns={'parsed_time':'time','GPS Lat':'lat','GPS Lon':'lon','GPS Alt':'alt'})
+    base_cols = ['time','lat','lon','alt','distance_to_sensor','delta_distance','speed','delta_speed','heading','delta_heading','pixel_movement_type']
+    extras = [c for c in ['Sensor Type','Doppler Type','Time'] if c in df.columns]
+    return df[extras + base_cols]
+
+
 def analyze_sensor_detection_by_movement(pixel_dict, flight):
     """Analyze movement types relative to pixel detections for a flight."""
     detection_analysis = {
@@ -289,8 +366,8 @@ def analyze_sensor_detection_by_movement(pixel_dict, flight):
             continue
         for coords, meta, _ in windows:
             for m in meta:
-                mv = m.get('relative_movement', 'unknown')
-                dist = m.get('dist3D', 0)
+                mv = m.get('pixel_movement_type', 'unknown')
+                dist = m.get('distance_to_sensor', 0)
                 if pd.isna(dist):
                     dist = 0
                 if mv not in counts:
@@ -449,6 +526,7 @@ def process_flight_data():
 
         dfx = load_pixel_csv(px)
         if dfx is None:
+            print(f"\u26A0\uFE0F Missing pixel CSV for pixel {px}")
             continue
 
         window = dfx[
@@ -459,15 +537,19 @@ def process_flight_data():
         if window.empty:
             continue
 
-        # Calculate dynamics relative to the pixel's sensor position
-        window = calculate_flight_dynamics(
-            window,
-            sensor_lat=ev['Sensor Lat'],
-            sensor_lon=ev['Sensor Lon']
+        # Calculate movement relative to this pixel's sensor
+        rel_window = calculate_relative_movement_to_pixel(
+            dfx[dfx['Flight number'] == fl],
+            ev['Sensor Lat'],
+            ev['Sensor Lon'],
+            start,
+            end
         )
+        if rel_window.empty:
+            continue
 
-        coords = window[['GPS Lat', 'GPS Lon']].values.tolist()
-        meta = window[['Sensor Type', 'Doppler Type', 'Time', 'dist3D', 'relative_movement']].to_dict('records')
+        coords = rel_window[['lat', 'lon']].values.tolist()
+        meta = rel_window.to_dict('records')
         dict_pixel.setdefault((fl, px), []).append((coords, meta, snapshot))
 
     return dict_pixel
@@ -1106,9 +1188,9 @@ def update_map(flight, view_mode, selection, display_options):
                                     html.Strong("📱 Type: "), f"{m['Sensor Type']}", html.Br(),
                                     html.Strong("📡 Doppler: "), f"{m['Doppler Type']}", html.Br(),
                                     html.Strong("⏰ Time: "), f"{m['Time']}", html.Br(),
-                                    html.Strong("📏 Distance: "), f"{m['dist3D']:.2f}m",
+                                    html.Strong("📏 Distance: "), f"{m['distance_to_sensor']:.2f}m",
                                     html.Br(),
-                                    html.Strong("🚦 Movement: "), f"{m.get('relative_movement', 'n/a')}",
+                                    html.Strong("🚦 Movement: "), f"{m.get('pixel_movement_type', 'n/a')}",
                                     coverage_text
                                 ], className="mb-2 small"),
 
@@ -1118,7 +1200,7 @@ def update_map(flight, view_mode, selection, display_options):
                         ], style={"maxWidth": "350px"})
                     ])
 
-                    img_uri = get_image_data(snapshot)
+                    img_uri = get_image_data(snapshot) if i == 0 else None
                     if img_uri:
                         popup_content.children[0].children[1].children.append(
                             html.Img(
@@ -1231,9 +1313,9 @@ def update_map(flight, view_mode, selection, display_options):
                                         html.Strong("✈️ Flight: "), f"{flight}", html.Br(),
                                         html.Strong("📡 Doppler: "), f"{m['Doppler Type']}", html.Br(),
                                         html.Strong("⏰ Time: "), f"{m['Time']}", html.Br(),
-                                        html.Strong("📏 Distance: "), f"{m['dist3D']:.2f}m",
+                                        html.Strong("📏 Distance: "), f"{m['distance_to_sensor']:.2f}m",
                                         html.Br(),
-                                        html.Strong("🚦 Movement: "), f"{m.get('relative_movement', 'n/a')}",
+                                        html.Strong("🚦 Movement: "), f"{m.get('pixel_movement_type', 'n/a')}",
                                         coverage_text
                                     ], className="small mb-0")
                                 ])
@@ -1359,7 +1441,7 @@ def update_3d_view(flight, options):
                     fig.add_trace(go.Scatter3d(
                         x=type_events['Sensor Lon'],
                         y=type_events['Sensor Lat'],
-                        z=[flight_df['GPS Alt'].mean()] * len(type_events),
+                        z=[0] * len(type_events),
                         mode='markers',
                         name=f'Sensor {stype}',
                         marker=dict(size=8, color=type_colors.get(stype, '#FF0000'), symbol='diamond')
@@ -1446,9 +1528,11 @@ def update_movement_analysis(flight):
         )
 
         if 'Time' in flight_df.columns:
-            x_axis = pd.to_datetime(flight_df['Time'])
+            x_axis = pd.to_datetime(flight_df['Time'], errors='coerce')
+            if x_axis.isna().all():
+                x_axis = pd.date_range(start='2020-01-01', periods=len(flight_df), freq='S')
         else:
-            x_axis = range(len(flight_df))
+            x_axis = pd.date_range(start='2020-01-01', periods=len(flight_df), freq='S')
 
         # Speed
         if 'speed_smooth' in flight_df.columns:
