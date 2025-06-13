@@ -106,6 +106,8 @@ class MainWindow(QMainWindow):
         self.annotator = EventAnnotator(self.canvas, undo_callback=self.add_undo_action)
         self.detection_manager = DetectionManager()
         self.audio_player = SoundDevicePlayer()
+        self.audio_player.prevRequested.connect(self.load_prev_file)
+        self.audio_player.nextRequested.connect(self.load_next_file)
 
         # --- Left pane (file list) ---
         left_frame = QFrame()
@@ -147,13 +149,6 @@ class MainWindow(QMainWindow):
         self.open_file_btn.setIcon(qta.icon('fa5s.file'))
         self.open_file_btn.clicked.connect(self.select_multiple_files)
 
-        self.prev_file_btn = QPushButton()
-        self.prev_file_btn.setIcon(qta.icon('fa5s.chevron-left'))
-        self.prev_file_btn.clicked.connect(self.load_prev_file)
-
-        self.next_file_btn = QPushButton()
-        self.next_file_btn.setIcon(qta.icon('fa5s.chevron-right'))
-        self.next_file_btn.clicked.connect(self.load_next_file)
 
         self.change_cmap_btn = QPushButton("Colormap")
         self.change_cmap_btn.setIcon(qta.icon('fa5s.palette'))
@@ -221,8 +216,6 @@ class MainWindow(QMainWindow):
         for w in [
             self.open_folder_btn,
             self.open_file_btn,
-            self.prev_file_btn,
-            self.next_file_btn,
             self.change_cmap_btn,
             self.set_csv_btn,
             self.settings_btn,
@@ -659,7 +652,7 @@ class MainWindow(QMainWindow):
         dlg.exec_()
 
     def toggle_param_panel(self, visible):
-        self.param_panel.setVisible(visible)
+        self.param_panel.toggle(visible)
         icon = qta.icon('fa5s.chevron-down') if visible else qta.icon('fa5s.chevron-up')
         self.params_toggle_btn.setIcon(icon)
 

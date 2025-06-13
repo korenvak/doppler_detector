@@ -5,7 +5,7 @@ import time
 import os
 
 from PyQt5.QtWidgets import QWidget, QHBoxLayout, QPushButton
-from PyQt5.QtCore import Qt
+from PyQt5.QtCore import Qt, pyqtSignal
 from spectrogram_gui.utils.ffmpeg_utils import convert_to_wav
 import soundfile as sf
 
@@ -15,6 +15,9 @@ class SoundDevicePlayer(QWidget):
     Audio playback widget using sounddevice.
     Exposes methods to retrieve and replace the waveform for filtering/FFT/gain.
     """
+
+    prevRequested = pyqtSignal()
+    nextRequested = pyqtSignal()
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -29,16 +32,22 @@ class SoundDevicePlayer(QWidget):
         self.playing = False
         self.position_callback = None
 
-        # Layout + Play/Stop buttons
+        # Layout + playback/navigation buttons
         self.layout = QHBoxLayout(self)
         self.layout.setSpacing(12)
         self.layout.setAlignment(Qt.AlignCenter)
+        self.prev_btn = QPushButton("⏮")
+        self.next_btn = QPushButton("⏭")
         self.play_btn = QPushButton("▶ Play")
         self.stop_btn = QPushButton("⏹ Stop")
         self.play_btn.clicked.connect(self.play)
         self.stop_btn.clicked.connect(self.stop)
+        self.prev_btn.clicked.connect(self.prevRequested)
+        self.next_btn.clicked.connect(self.nextRequested)
+        self.layout.addWidget(self.prev_btn)
         self.layout.addWidget(self.play_btn)
         self.layout.addWidget(self.stop_btn)
+        self.layout.addWidget(self.next_btn)
 
     def load(self, filepath):
         """
