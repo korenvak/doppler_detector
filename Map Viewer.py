@@ -3,7 +3,7 @@ import glob
 import itertools
 import base64
 import json
-from datetime import datetime, timedelta
+from datetime import datetime
 
 import pandas as pd
 import numpy as np
@@ -163,54 +163,89 @@ def calculate_data_quality_metrics(df_sum, coverage_per_pixel, coverage_per_type
     return quality_metrics
 
 
-def calculate_flight_dynamics(flight_df):
-    """Calculate flight dynamics including speed, acceleration, turning angles"""
+def calculate_flight_dynamics(flight_df, sensor_lat=None, sensor_lon=None):
+    """Calculate flight dynamics including speed, acceleration, turning angles,
+    and relative motion to an optional sensor position."""
     if len(flight_df) < 3:
         return flight_df
 
     flight_df = flight_df.copy()
 
-    # Calculate time differences (assuming Time column exists)
+    # Calculate time differences
     if 'Time' in flight_df.columns:
-        flight_df['time_diff'] = pd.to_datetime(flight_df['Time']).diff().dt.total_seconds()
+        flight_df['parsed_time'] = pd.to_datetime(
+            flight_df['Time'], errors='coerce', infer_datetime_format=True
+        )
+        if flight_df['parsed_time'].isna().sum() > len(flight_df) * 0.5:
+            flight_df['parsed_time'] = pd.date_range(start='2020-01-01', periods=len(flight_df), freq='S')
+        flight_df['time_diff'] = flight_df['parsed_time'].diff().dt.total_seconds()
     else:
-        # If no time column, assume 1 second intervals
+        flight_df['parsed_time'] = pd.date_range(start='2020-01-01', periods=len(flight_df), freq='S')
         flight_df['time_diff'] = 1.0
 
-    # Calculate distances between consecutive points
-    coords = flight_df[['GPS Lat', 'GPS Lon']].values
-    distances = []
+    # Calculate distances between consecutive points (3D)
+    coord_cols = ['GPS Lat', 'GPS Lon']
+    if 'GPS Alt' in flight_df.columns:
+        coord_cols.append('GPS Alt')
+    coords = flight_df[coord_cols].values
+    distances = [0]
+    from geopy.distance import geodesic
     for i in range(1, len(coords)):
-        from geopy.distance import geodesic
-        distances.append(geodesic(coords[i - 1], coords[i]).meters)
-    distances = [0] + distances  # First point has 0 distance
+        lat1, lon1 = coords[i-1][:2]
+        lat2, lon2 = coords[i][:2]
+        alt1 = coords[i-1][2] if len(coords[i-1]) > 2 else 0
+        alt2 = coords[i][2] if len(coords[i]) > 2 else 0
+        dist_2d = geodesic((lat1, lon1), (lat2, lon2)).meters
+        dist_3d = np.sqrt(dist_2d**2 + (alt2 - alt1)**2)
+        distances.append(dist_3d)
 
     flight_df['distance'] = distances
 
     # Calculate speed (m/s)
-    flight_df['speed'] = flight_df['distance'] / flight_df['time_diff'].fillna(1)
+    flight_df['speed'] = flight_df['distance'] / flight_df['time_diff'].replace(0, 1)
     flight_df['speed'] = flight_df['speed'].fillna(0)
 
     # Smooth speed using Savitzky-Golay filter if enough points
     if len(flight_df) > 10:
-        window_length = min(11, len(flight_df) if len(flight_df) % 2 == 1 else len(flight_df) - 1)
-        if window_length >= 3:  # Ensure window length is at least 3
-            flight_df['speed_smooth'] = savgol_filter(flight_df['speed'].fillna(0),
-                                                      window_length=window_length,
-                                                      polyorder=min(3, window_length - 1))
-        else:
-            flight_df['speed_smooth'] = flight_df['speed']
+        window_length = min(11, len(flight_df))
+        if window_length % 2 == 0:
+            window_length -= 1
+        window_length = max(3, window_length)
+        flight_df['speed_smooth'] = savgol_filter(
+            flight_df['speed'].fillna(0),
+            window_length=window_length,
+            polyorder=min(3, window_length - 1)
+        )
     else:
         flight_df['speed_smooth'] = flight_df['speed']
 
     # Calculate acceleration
     flight_df['acceleration'] = flight_df['speed_smooth'].diff() / flight_df['time_diff'].fillna(1)
 
+    # Relative movement to sensor if provided
+    if sensor_lat is not None and sensor_lon is not None:
+        from geopy.distance import geodesic
+        sensor_coord = (sensor_lat, sensor_lon)
+        dist_sensor = []
+        for row in coords:
+            lat, lon = row[:2]
+            alt = row[2] if len(row) > 2 else 0
+            dist_2d = geodesic(sensor_coord, (lat, lon)).meters
+            dist_sensor.append(np.sqrt(dist_2d**2 + alt**2))
+        flight_df['dist_to_sensor'] = dist_sensor
+        flight_df['dist_change'] = flight_df['dist_to_sensor'].diff().fillna(0)
+        flight_df['relative_movement'] = flight_df['dist_change'].apply(
+            lambda d: 'approaching' if d < -1 else (
+                'departing' if d > 1 else 'steady')
+        )
+    else:
+        flight_df['relative_movement'] = 'unknown'
+
     # Calculate heading changes (turning angles)
     headings = []
     for i in range(1, len(coords)):
-        lat1, lon1 = coords[i - 1]
-        lat2, lon2 = coords[i]
+        lat1, lon1 = coords[i - 1][:2]
+        lat2, lon2 = coords[i][:2]
         # Calculate bearing
         dlon = np.radians(lon2 - lon1)
         lat1_rad = np.radians(lat1)
@@ -253,8 +288,90 @@ def calculate_flight_dynamics(flight_df):
     return flight_df
 
 
-def analyze_sensor_detection_by_movement(df_sum, flight_df):
-    """Analyze which movement types are detected by sensors"""
+def calculate_relative_movement_to_pixel(df_flight, sensor_lat, sensor_lon, start_time, end_time):
+    """Classify movement relative to a pixel's sensor."""
+    df = df_flight.copy()
+    df['parsed_time'] = pd.to_datetime(
+        df.get('Time'), errors='coerce', infer_datetime_format=True
+    )
+    start = pd.to_datetime(start_time)
+    end = pd.to_datetime(end_time)
+    df = df[(df['parsed_time'] >= start) & (df['parsed_time'] <= end)].reset_index(drop=True)
+    if df.empty:
+        return pd.DataFrame(columns=['time','lat','lon','alt','distance_to_sensor','delta_distance','speed','delta_speed','heading','delta_heading','pixel_movement_type'])
+
+    df['time_diff'] = df['parsed_time'].diff().dt.total_seconds().fillna(1)
+
+    coord_cols = ['GPS Lat', 'GPS Lon']
+    if 'GPS Alt' in df.columns:
+        coord_cols.append('GPS Alt')
+    coords = df[coord_cols].values
+    from geopy.distance import geodesic
+
+    # distance to sensor
+    sensor_coord = (sensor_lat, sensor_lon)
+    dist_to_sensor = []
+    for row in coords:
+        lat, lon = row[:2]
+        alt = row[2] if len(row) > 2 else 0
+        d2d = geodesic((lat, lon), sensor_coord).meters
+        dist_to_sensor.append(np.sqrt(d2d**2 + alt**2))
+    df['distance_to_sensor'] = dist_to_sensor
+    df['delta_distance'] = df['distance_to_sensor'].diff().fillna(0)
+
+    # path distance and speed
+    dist_path = [0]
+    for i in range(1, len(coords)):
+        lat1, lon1 = coords[i-1][:2]
+        lat2, lon2 = coords[i][:2]
+        alt1 = coords[i-1][2] if len(coords[i-1]) > 2 else 0
+        alt2 = coords[i][2] if len(coords[i]) > 2 else 0
+        d2d = geodesic((lat1, lon1), (lat2, lon2)).meters
+        d3d = np.sqrt(d2d**2 + (alt2 - alt1)**2)
+        dist_path.append(d3d)
+    df['dist3d'] = dist_path
+    df['speed'] = df['dist3d'] / df['time_diff'].replace(0, 1)
+    df['delta_speed'] = df['speed'].diff().fillna(0)
+
+    # heading
+    headings = [0]
+    for i in range(1, len(coords)):
+        lat1, lon1 = coords[i-1][:2]
+        lat2, lon2 = coords[i][:2]
+        dlon = np.radians(lon2 - lon1)
+        lat1_rad = np.radians(lat1)
+        lat2_rad = np.radians(lat2)
+        y = np.sin(dlon) * np.cos(lat2_rad)
+        x = np.cos(lat1_rad) * np.sin(lat2_rad) - np.sin(lat1_rad) * np.cos(lat2_rad) * np.cos(dlon)
+        headings.append(np.degrees(np.arctan2(y, x)))
+    df['heading'] = headings
+    df['delta_heading'] = df['heading'].diff().fillna(0).apply(lambda x: x-360 if x>180 else (x+360 if x<-180 else x))
+
+    def classify(r):
+        if r['delta_distance'] < -1:
+            return 'approaching'
+        if r['delta_distance'] > 1:
+            return 'departing'
+        if r['speed'] < 1:
+            return 'hovering'
+        if r['delta_speed'] > 2:
+            return 'accelerating'
+        if r['delta_speed'] < -2:
+            return 'decelerating'
+        if abs(r['delta_heading']) > 15:
+            return 'turning'
+        return 'cruising'
+
+    df['pixel_movement_type'] = df.apply(classify, axis=1)
+
+    df = df.rename(columns={'parsed_time':'time','GPS Lat':'lat','GPS Lon':'lon','GPS Alt':'alt'})
+    base_cols = ['time','lat','lon','alt','distance_to_sensor','delta_distance','speed','delta_speed','heading','delta_heading','pixel_movement_type']
+    extras = [c for c in ['Sensor Type','Doppler Type','Time'] if c in df.columns]
+    return df[extras + base_cols]
+
+
+def analyze_sensor_detection_by_movement(pixel_dict, flight):
+    """Analyze movement types relative to pixel detections for a flight."""
     detection_analysis = {
         'movement_type': [],
         'total_points': [],
@@ -263,45 +380,34 @@ def analyze_sensor_detection_by_movement(df_sum, flight_df):
         'avg_distance': []
     }
 
-    if 'movement_type' not in flight_df.columns or flight_df.empty:
+    counts = {}
+    total_points = 0
+
+    for (fl, px), windows in pixel_dict.items():
+        if fl != flight:
+            continue
+        for coords, meta, _ in windows:
+            for m in meta:
+                mv = m.get('pixel_movement_type', 'unknown')
+                dist = m.get('distance_to_sensor', 0)
+                if pd.isna(dist):
+                    dist = 0
+                if mv not in counts:
+                    counts[mv] = {'count': 0, 'dist_sum': 0.0}
+                counts[mv]['count'] += 1
+                counts[mv]['dist_sum'] += dist
+                total_points += 1
+
+    if total_points == 0:
         return pd.DataFrame(detection_analysis)
 
-    # Get the flight number from the dataframe
-    if 'Flight number' in flight_df.columns:
-        flight_num = flight_df['Flight number'].iloc[0]
-    else:
-        # Try to extract from other available data
-        flight_num = df_sum['Flight number'].iloc[0] if not df_sum.empty else 1
-
-    movement_types = flight_df['movement_type'].unique()
-
-    for mov_type in movement_types:
-        mov_points = flight_df[flight_df['movement_type'] == mov_type]
-        total = len(mov_points)
-
-        # Find detections during this movement type
-        detected = 0
-        distances = []
-
-        for _, point in mov_points.iterrows():
-            if 'Time' in point:
-                # Check if this time point has sensor detections
-                detections = df_sum[
-                    (df_sum['Flight number'] == flight_num) &
-                    (pd.to_datetime(df_sum['Start time']) <= pd.to_datetime(point['Time'])) &
-                    (pd.to_datetime(df_sum['End time']) >= pd.to_datetime(point['Time']))
-                    ]
-
-                if not detections.empty:
-                    detected += 1
-                    if 'min_dist3D' in detections.columns:
-                        distances.extend(detections['min_dist3D'].values)
-
-        detection_analysis['movement_type'].append(mov_type)
-        detection_analysis['total_points'].append(total)
-        detection_analysis['detected_points'].append(detected)
-        detection_analysis['detection_rate'].append(detected / total * 100 if total > 0 else 0)
-        detection_analysis['avg_distance'].append(np.mean(distances) if distances else 0)
+    for mv, data in counts.items():
+        detection_analysis['movement_type'].append(mv)
+        detection_analysis['total_points'].append(total_points)
+        detection_analysis['detected_points'].append(data['count'])
+        detection_analysis['detection_rate'].append(data['count'] / total_points * 100)
+        avg_dist = data['dist_sum'] / data['count'] if data['count'] > 0 else 0
+        detection_analysis['avg_distance'].append(avg_dist)
 
     return pd.DataFrame(detection_analysis)
 
@@ -442,6 +548,7 @@ def process_flight_data():
 
         dfx = load_pixel_csv(px)
         if dfx is None:
+            print(f"\u26A0\uFE0F Missing pixel CSV for pixel {px}")
             continue
 
         window = dfx[
@@ -452,8 +559,19 @@ def process_flight_data():
         if window.empty:
             continue
 
-        coords = window[['GPS Lat', 'GPS Lon']].values.tolist()
-        meta = window[['Sensor Type', 'Doppler Type', 'Time', 'dist3D']].to_dict('records')
+        # Calculate movement relative to this pixel's sensor
+        rel_window = calculate_relative_movement_to_pixel(
+            dfx[dfx['Flight number'] == fl],
+            ev['Sensor Lat'],
+            ev['Sensor Lon'],
+            start,
+            end
+        )
+        if rel_window.empty:
+            continue
+
+        coords = rel_window[['lat', 'lon']].values.tolist()
+        meta = rel_window.to_dict('records')
         dict_pixel.setdefault((fl, px), []).append((coords, meta, snapshot))
 
     return dict_pixel
@@ -491,6 +609,36 @@ def generate_color_schemes():
 
 
 pixel_colors, type_colors = generate_color_schemes()
+
+# Color map for movement classifications
+MOVEMENT_COLORS = {
+    'approaching': '#2ecc71',  # green
+    'departing': '#e74c3c',   # red
+    'hovering': '#9b59b6',    # purple
+    'accelerating': '#f39c12',  # orange
+    'decelerating': '#3498db',  # blue
+    'turning': '#f1c40f',      # yellow
+    'cruising': '#95a5a6'      # gray
+}
+
+def generate_movement_legend():
+    """Return an HTML legend explaining movement colors."""
+    items = []
+    for name, col in MOVEMENT_COLORS.items():
+        items.append(
+            html.Span(
+                [html.Span(style={'display': 'inline-block',
+                                 'width': '12px',
+                                 'height': '12px',
+                                 'backgroundColor': col,
+                                 'marginRight': '6px'}),
+                 name.capitalize()],
+                className="me-3"
+            )
+        )
+    return html.Div(items, className="small")
+
+movement_legend = generate_movement_legend()
 
 # ----------------------------
 # 7) Prepare data for dashboard
@@ -732,7 +880,6 @@ app.layout = dbc.Container([
                 dbc.ButtonGroup([
                     dbc.Button("🗺️ Interactive Map", id="btn-map", color="primary", className="me-1", active=True),
                     dbc.Button("🎮 3D View", id="btn-3d", color="secondary", className="me-1"),
-                    dbc.Button("▶️ Animation", id="btn-animation", color="secondary", className="me-1"),
                     dbc.Button("🏃 Movement Analysis", id="btn-movement", color="secondary", className="me-1"),
                     dbc.Button("📊 Analytics", id="btn-analytics", color="secondary", className="me-1"),
                     dbc.Button("📋 Data Table", id="btn-data", color="secondary", className="me-1"),
@@ -755,29 +902,26 @@ app.layout = dbc.Container([
 
 @app.callback(
     [Output('tab-content', 'children'),
-     Output('btn-map', 'active'),
-     Output('btn-3d', 'active'),
-     Output('btn-animation', 'active'),
-     Output('btn-movement', 'active'),
-     Output('btn-analytics', 'active'),
-     Output('btn-data', 'active'),
-     Output('btn-settings', 'active'),
-     Output('btn-map', 'color'),
-     Output('btn-3d', 'color'),
-     Output('btn-animation', 'color'),
-     Output('btn-movement', 'color'),
-     Output('btn-analytics', 'color'),
-     Output('btn-data', 'color'),
-     Output('btn-settings', 'color')],
+    Output('btn-map', 'active'),
+    Output('btn-3d', 'active'),
+    Output('btn-movement', 'active'),
+    Output('btn-analytics', 'active'),
+    Output('btn-data', 'active'),
+    Output('btn-settings', 'active'),
+    Output('btn-map', 'color'),
+    Output('btn-3d', 'color'),
+    Output('btn-movement', 'color'),
+    Output('btn-analytics', 'color'),
+    Output('btn-data', 'color'),
+    Output('btn-settings', 'color')],
     [Input('btn-map', 'n_clicks'),
      Input('btn-3d', 'n_clicks'),
-     Input('btn-animation', 'n_clicks'),
      Input('btn-movement', 'n_clicks'),
      Input('btn-analytics', 'n_clicks'),
      Input('btn-data', 'n_clicks'),
      Input('btn-settings', 'n_clicks')]
 )
-def render_content_from_buttons(btn_map, btn_3d, btn_animation, btn_movement, btn_analytics, btn_data, btn_settings):
+def render_content_from_buttons(btn_map, btn_3d, btn_movement, btn_analytics, btn_data, btn_settings):
     # Determine which button was clicked
     ctx = callback_context
     if not ctx.triggered:
@@ -787,8 +931,8 @@ def render_content_from_buttons(btn_map, btn_3d, btn_animation, btn_movement, bt
         active_tab = button_id.split('-')[1]
 
     # Set active states
-    active_states = [False] * 7
-    colors = ['secondary'] * 7
+    active_states = [False] * 6
+    colors = ['secondary'] * 6
 
     # Content to display
     content = None
@@ -809,7 +953,8 @@ def render_content_from_buttons(btn_map, btn_3d, btn_animation, btn_movement, bt
                     )
                 ],
                 style={'width': '100%', 'height': '70vh', 'border-radius': '8px', 'border': '1px solid #dee2e6'}
-            )
+            ),
+            html.Div(movement_legend, className="mt-2")
         ])
 
     elif active_tab == "3d":
@@ -830,8 +975,7 @@ def render_content_from_buttons(btn_map, btn_3d, btn_animation, btn_movement, bt
                         id='3d-options',
                         options=[
                             {'label': ' Show Sensor Detections', 'value': 'detections'},
-                            {'label': ' Color by Speed', 'value': 'speed'},
-                            {'label': ' Show Movement Types', 'value': 'movement'}
+                            {'label': ' Color by Speed', 'value': 'speed'}
                         ],
                         value=['detections'],
                         inline=True
@@ -841,56 +985,9 @@ def render_content_from_buttons(btn_map, btn_3d, btn_animation, btn_movement, bt
             dcc.Graph(id='3d-flight-view', style={'height': '70vh'})
         ])
 
-    elif active_tab == "animation":
+    elif active_tab == "movement":
         active_states[2] = True
         colors[2] = 'primary'
-        content = html.Div([
-            dbc.Row([
-                dbc.Col([
-                    html.Label("Select Flight to Animate:", className="fw-bold"),
-                    dcc.Dropdown(
-                        id='anim-flight-select',
-                        options=[{'label': f'Flight {f}', 'value': f} for f in flight_numbers],
-                        value=flight_numbers[0] if flight_numbers else None
-                    )
-                ], md=3),
-                dbc.Col([
-                    html.Label("Animation Speed:", className="fw-bold"),
-                    dcc.Slider(
-                        id='anim-speed',
-                        min=1,
-                        max=10,
-                        value=2,
-                        marks={i: f'{i}x' for i in [1, 2, 5, 10]},
-                        step=1
-                    )
-                ], md=3),
-                dbc.Col([
-                    dbc.ButtonGroup([
-                        dbc.Button("▶ Play", id="play-btn", color="success", size="sm"),
-                        dbc.Button("⏸ Pause", id="pause-btn", color="warning", size="sm"),
-                        dbc.Button("⏹ Stop", id="stop-btn", color="danger", size="sm")
-                    ])
-                ], md=3),
-                dbc.Col([
-                    html.Div(id="anim-status", className="text-muted")
-                ], md=3)
-            ], className="mb-3"),
-            dcc.Graph(id='animation-view', style={'height': '60vh'}),
-            dcc.Slider(
-                id='time-slider',
-                min=0,
-                max=100,
-                value=0,
-                marks={i: f'{i}%' for i in range(0, 101, 20)},
-                step=1
-            ),
-            dcc.Interval(id='animation-interval', interval=100, disabled=True)
-        ])
-
-    elif active_tab == "movement":
-        active_states[3] = True
-        colors[3] = 'primary'
         content = html.Div([
             dbc.Row([
                 dbc.Col([
@@ -918,8 +1015,8 @@ def render_content_from_buttons(btn_map, btn_3d, btn_animation, btn_movement, bt
         ])
 
     elif active_tab == "analytics":
-        active_states[4] = True
-        colors[4] = 'primary'
+        active_states[3] = True
+        colors[3] = 'primary'
         content = html.Div([
             dbc.Row([
                 dbc.Col([
@@ -940,15 +1037,15 @@ def render_content_from_buttons(btn_map, btn_3d, btn_animation, btn_movement, bt
         ])
 
     elif active_tab == "data":
-        active_states[5] = True
-        colors[5] = 'primary'
+        active_states[4] = True
+        colors[4] = 'primary'
         content = html.Div([
             html.Div(id="data-table-container")
         ])
 
     elif active_tab == "settings":
-        active_states[6] = True
-        colors[6] = 'primary'
+        active_states[5] = True
+        colors[5] = 'primary'
         content = html.Div([
             dbc.Row([
                 dbc.Col([
@@ -1111,6 +1208,7 @@ def update_map(flight, view_mode, selection, display_options):
             col = pixel_colors.get(px, '#0066CC')
 
             for window_idx, (coords, meta, snapshot) in enumerate(windows):
+                img_uri = get_image_data(snapshot)
                 trace_id = f"trace-{px}-{flight}-{window_idx}"
                 layers.append(dl.Polyline(
                     id=trace_id,
@@ -1144,7 +1242,9 @@ def update_map(flight, view_mode, selection, display_options):
                                     html.Strong("📱 Type: "), f"{m['Sensor Type']}", html.Br(),
                                     html.Strong("📡 Doppler: "), f"{m['Doppler Type']}", html.Br(),
                                     html.Strong("⏰ Time: "), f"{m['Time']}", html.Br(),
-                                    html.Strong("📏 Distance: "), f"{m['dist3D']:.2f}m",
+                                    html.Strong("📏 Distance: "), f"{m['distance_to_sensor']:.2f}m",
+                                    html.Br(),
+                                    html.Strong("🚦 Movement: "), f"{m.get('pixel_movement_type', 'n/a')}",
                                     coverage_text
                                 ], className="mb-2 small"),
 
@@ -1154,7 +1254,6 @@ def update_map(flight, view_mode, selection, display_options):
                         ], style={"maxWidth": "350px"})
                     ])
 
-                    img_uri = get_image_data(snapshot)
                     if img_uri:
                         popup_content.children[0].children[1].children.append(
                             html.Img(
@@ -1171,13 +1270,14 @@ def update_map(flight, view_mode, selection, display_options):
                         )
 
                     marker_id = f"marker-{px}-{flight}-{window_idx}-{i}"
+                    mv_col = MOVEMENT_COLORS.get(m.get('pixel_movement_type', 'cruising'), col)
                     layers.append(dl.CircleMarker(
                         id=marker_id,
                         center=[lat, lon],
                         radius=marker_size,
-                        color=col,
+                        color=mv_col,
                         fill=True,
-                        fillColor=col,
+                        fillColor=mv_col,
                         fillOpacity=0.8,
                         weight=2,
                         children=[dl.Popup(popup_content, maxWidth=400)]
@@ -1267,7 +1367,9 @@ def update_map(flight, view_mode, selection, display_options):
                                         html.Strong("✈️ Flight: "), f"{flight}", html.Br(),
                                         html.Strong("📡 Doppler: "), f"{m['Doppler Type']}", html.Br(),
                                         html.Strong("⏰ Time: "), f"{m['Time']}", html.Br(),
-                                        html.Strong("📏 Distance: "), f"{m['dist3D']:.2f}m",
+                                        html.Strong("📏 Distance: "), f"{m['distance_to_sensor']:.2f}m",
+                                        html.Br(),
+                                        html.Strong("🚦 Movement: "), f"{m.get('pixel_movement_type', 'n/a')}",
                                         coverage_text
                                     ], className="small mb-0")
                                 ])
@@ -1275,13 +1377,14 @@ def update_map(flight, view_mode, selection, display_options):
                         ])
 
                         marker_id = f"type-marker-{stype}-{px}-{window_idx}-{i}"
+                        mv_col = MOVEMENT_COLORS.get(m.get('pixel_movement_type', 'cruising'), col)
                         layers.append(dl.CircleMarker(
                             id=marker_id,
                             center=[lat, lon],
                             radius=4,
-                            color=col,
+                            color=mv_col,
                             fill=True,
-                            fillColor=col,
+                            fillColor=mv_col,
                             fillOpacity=0.8,
                             children=[dl.Popup(popup_content, maxWidth=400)]
                         ))
@@ -1350,22 +1453,16 @@ def update_3d_view(flight, options):
         return fig
 
     try:
-        # Load flight data
         flight_path = os.path.join(trace_dir, f"Flight_{flight}_logs.csv")
         flight_df = pd.read_csv(flight_path)
 
-        # Add flight number to dataframe
         flight_df['Flight number'] = flight
 
-        # Calculate dynamics
         flight_df = calculate_flight_dynamics(flight_df)
 
-        # Create 3D plot
         fig = go.Figure()
 
-        # Main flight path
-        if 'speed' in (options or []) and flight_df is not None and 'speed_smooth' in flight_df.columns:
-            # Color by speed
+        if 'speed' in (options or []) and 'speed_smooth' in flight_df.columns:
             fig.add_trace(go.Scatter3d(
                 x=flight_df['GPS Lon'],
                 y=flight_df['GPS Lat'],
@@ -1381,7 +1478,6 @@ def update_3d_view(flight, options):
                 marker=dict(size=3)
             ))
         else:
-            # Simple path
             fig.add_trace(go.Scatter3d(
                 x=flight_df['GPS Lon'],
                 y=flight_df['GPS Lat'],
@@ -1392,18 +1488,15 @@ def update_3d_view(flight, options):
                 marker=dict(size=3)
             ))
 
-        # Add sensor detections
         if 'detections' in (options or []):
             flight_events = df_sum[df_sum['Flight number'] == flight]
             if not flight_events.empty:
-                # Group by sensor type for different colors
                 for stype in flight_events['Sensor Type'].unique():
                     type_events = flight_events[flight_events['Sensor Type'] == stype]
-
                     fig.add_trace(go.Scatter3d(
                         x=type_events['Sensor Lon'],
                         y=type_events['Sensor Lat'],
-                        z=[flight_df['GPS Alt'].mean()] * len(type_events),  # Place sensors at average altitude
+                        z=[0] * len(type_events),
                         mode='markers',
                         name=f'Sensor {stype}',
                         marker=dict(
@@ -1413,34 +1506,6 @@ def update_3d_view(flight, options):
                         )
                     ))
 
-        # Add movement type annotations
-        if 'movement' in (options or []) and flight_df is not None and 'movement_type' in flight_df.columns:
-            # Add colored segments for different movement types
-            movement_colors = {
-                'cruising': 'blue',
-                'accelerating': 'green',
-                'decelerating': 'red',
-                'turning': 'orange',
-                'hovering': 'purple'
-            }
-
-            for mov_type, color in movement_colors.items():
-                mov_df = flight_df[flight_df['movement_type'] == mov_type]
-                if not mov_df.empty:
-                    fig.add_trace(go.Scatter3d(
-                        x=mov_df['GPS Lon'],
-                        y=mov_df['GPS Lat'],
-                        z=mov_df['GPS Alt'],
-                        mode='markers',
-                        name=mov_type.capitalize(),
-                        marker=dict(
-                            size=5,
-                            color=color,
-                            symbol='circle'
-                        )
-                    ))
-
-        # Update layout
         fig.update_layout(
             title=f"3D Flight Path - Flight {flight}",
             scene=dict(
@@ -1468,189 +1533,6 @@ def update_3d_view(flight, options):
         fig.update_layout(height=700)
         return fig
 
-
-@app.callback(
-    [Output('animation-view', 'figure'),
-     Output('animation-interval', 'disabled'),
-     Output('anim-status', 'children')],
-    [Input('anim-flight-select', 'value'),
-     Input('play-btn', 'n_clicks'),
-     Input('pause-btn', 'n_clicks'),
-     Input('stop-btn', 'n_clicks'),
-     Input('animation-interval', 'n_intervals'),
-     Input('time-slider', 'value'),
-     Input('anim-speed', 'value')],
-    [State('animation-interval', 'disabled')]
-)
-def update_animation(flight, play_clicks, pause_clicks, stop_clicks, n_intervals, time_value, speed, is_paused):
-    ctx = callback_context
-
-    if not flight:
-        fig = go.Figure()
-        fig.add_annotation(
-            text="Select a flight to animate",
-            xref="paper", yref="paper",
-            x=0.5, y=0.5, showarrow=False,
-            font=dict(size=20)
-        )
-        fig.update_layout(height=600)
-        return fig, True, "No flight selected"
-
-    # Determine which input triggered the callback
-    triggered_id = ctx.triggered[0]['prop_id'].split('.')[0] if ctx.triggered else None
-
-    # Handle play/pause/stop
-    if triggered_id == 'play-btn':
-        is_paused = False
-    elif triggered_id == 'pause-btn':
-        is_paused = True
-    elif triggered_id == 'stop-btn':
-        is_paused = True
-        time_value = 0
-
-    try:
-        # Load flight data
-        flight_path = os.path.join(trace_dir, f"Flight_{flight}_logs.csv")
-        flight_df = pd.read_csv(flight_path)
-
-        # Add flight number
-        flight_df['Flight number'] = flight
-
-        # Calculate dynamics
-        flight_df = calculate_flight_dynamics(flight_df)
-
-        # Calculate current position based on time slider
-        total_points = len(flight_df)
-        current_idx = int(time_value * total_points / 100) if total_points > 0 else 0
-
-        # Auto-advance if playing
-        if triggered_id == 'animation-interval' and not is_paused:
-            time_value = min(time_value + speed, 100)
-            if time_value >= 100:
-                is_paused = True
-
-        # Create figure
-        fig = go.Figure()
-
-        # Add full path (faded)
-        fig.add_trace(go.Scattermapbox(
-            lon=flight_df['GPS Lon'],
-            lat=flight_df['GPS Lat'],
-            mode='lines',
-            name='Full Path',
-            line=dict(color='lightgray', width=2),
-            opacity=0.5
-        ))
-
-        # Add traveled path
-        if current_idx > 0:
-            traveled_df = flight_df.iloc[:current_idx]
-            fig.add_trace(go.Scattermapbox(
-                lon=traveled_df['GPS Lon'],
-                lat=traveled_df['GPS Lat'],
-                mode='lines+markers',
-                name='Traveled Path',
-                line=dict(color='blue', width=4),
-                marker=dict(size=3)
-            ))
-
-        # Add current position
-        if 0 <= current_idx < len(flight_df):
-            current_point = flight_df.iloc[current_idx]
-
-            # Current position marker
-            fig.add_trace(go.Scattermapbox(
-                lon=[current_point['GPS Lon']],
-                lat=[current_point['GPS Lat']],
-                mode='markers',
-                name='Current Position',
-                marker=dict(size=15, color='red'),
-                text=f"Speed: {current_point.get('speed_smooth', 0):.1f} m/s<br>"
-                     f"Alt: {current_point['GPS Alt']:.0f} m<br>"
-                     f"Movement: {current_point.get('movement_type', 'unknown')}"
-            ))
-
-            # Add sensor detections near current time
-            if 'Time' in current_point:
-                current_time = pd.to_datetime(current_point['Time'])
-                time_window = timedelta(seconds=10)  # 10 second window
-
-                nearby_detections = df_sum[
-                    (df_sum['Flight number'] == flight) &
-                    (pd.to_datetime(df_sum['Start time']) >= current_time - time_window) &
-                    (pd.to_datetime(df_sum['Start time']) <= current_time + time_window)
-                    ]
-
-                if not nearby_detections.empty:
-                    for stype in nearby_detections['Sensor Type'].unique():
-                        type_detections = nearby_detections[nearby_detections['Sensor Type'] == stype]
-                        fig.add_trace(go.Scattermapbox(
-                            lon=type_detections['Sensor Lon'],
-                            lat=type_detections['Sensor Lat'],
-                            mode='markers',
-                            name=f'Detection: {stype}',
-                            marker=dict(
-                                size=10,
-                                color=type_colors.get(stype, '#FF0000'),
-                                symbol='circle'
-                            )
-                        ))
-
-        # Update layout
-        center_lat = flight_df['GPS Lat'].mean()
-        center_lon = flight_df['GPS Lon'].mean()
-
-        fig.update_layout(
-            mapbox=dict(
-                style="satellite",
-                center=dict(lat=center_lat, lon=center_lon),
-                zoom=13
-            ),
-            title=f"Flight Animation - Flight {flight}",
-            height=600,
-            showlegend=True
-        )
-
-        # Status message
-        status = f"Time: {time_value}% | "
-        if is_paused:
-            status += "⏸ Paused"
-        else:
-            status += f"▶ Playing at {speed}x speed"
-
-        return fig, is_paused, status
-
-    except Exception as e:
-        print(f"Error in animation: {e}")
-        fig = go.Figure()
-        fig.add_annotation(
-            text=f"Error: {str(e)}",
-            xref="paper", yref="paper",
-            x=0.5, y=0.5, showarrow=False,
-            font=dict(size=16, color="red")
-        )
-        fig.update_layout(height=600)
-        return fig, True, f"Error: {str(e)}"
-
-
-@app.callback(
-    Output('time-slider', 'value'),
-    [Input('animation-interval', 'n_intervals'),
-     Input('stop-btn', 'n_clicks')],
-    [State('time-slider', 'value'),
-     State('anim-speed', 'value'),
-     State('animation-interval', 'disabled')]
-)
-def update_time_slider(n_intervals, stop_clicks, current_value, speed, is_paused):
-    ctx = callback_context
-    triggered_id = ctx.triggered[0]['prop_id'].split('.')[0] if ctx.triggered else None
-
-    if triggered_id == 'stop-btn':
-        return 0
-    elif triggered_id == 'animation-interval' and not is_paused:
-        return min(current_value + speed, 100)
-
-    return current_value
 
 
 @app.callback(
@@ -1686,9 +1568,11 @@ def update_movement_analysis(flight):
         )
 
         if 'Time' in flight_df.columns:
-            x_axis = pd.to_datetime(flight_df['Time'])
+            x_axis = pd.to_datetime(flight_df['Time'], errors='coerce')
+            if x_axis.isna().all():
+                x_axis = pd.date_range(start='2020-01-01', periods=len(flight_df), freq='S')
         else:
-            x_axis = range(len(flight_df))
+            x_axis = pd.date_range(start='2020-01-01', periods=len(flight_df), freq='S')
 
         # Speed
         if 'speed_smooth' in flight_df.columns:
@@ -1717,7 +1601,7 @@ def update_movement_analysis(flight):
         timeline_fig.update_layout(height=600, showlegend=False, title=f"Flight Dynamics - Flight {flight}")
 
         # Detection by movement type
-        detection_analysis = analyze_sensor_detection_by_movement(df_sum[df_sum['Flight number'] == flight], flight_df)
+        detection_analysis = analyze_sensor_detection_by_movement(dict_pixel, flight)
 
         if not detection_analysis.empty:
             detection_fig = go.Figure(data=[
@@ -2127,11 +2011,11 @@ def update_data_table(flight, selection):
 # 10) Run Server
 # ----------------------------
 if __name__ == '__main__':
-    print("🚀 Starting Enhanced Flight Dashboard with 3D and Animation...")
+    print("🚀 Starting Enhanced Flight Dashboard with 3D view...")
     print(f"📊 Loaded {len(df_sum)} events from {len(flight_numbers)} flights")
     print(f"🎯 {len(sensor_positions)} unique pixels")
     print(f"📱 {len(df_sum['Sensor Type'].unique())} sensor types")
-    print("✨ New features: 3D visualization, flight animation, and movement analysis")
+    print("✨ New features: 3D visualization and movement analysis")
     print("📡 Dashboard will be available at: http://localhost:8050")
     print("\n⚠️ Make sure you have all required packages installed:")
     print("   pip install scipy geopy")
