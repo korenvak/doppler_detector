@@ -11,7 +11,7 @@ from PyQt5.QtWidgets import (
     QToolButton, QAction, QGraphicsDropShadowEffect, QShortcut
 )
 from PyQt5.QtGui import QKeySequence
-from PyQt5.QtCore import Qt, pyqtSignal, QSize
+from PyQt5.QtCore import Qt, pyqtSignal, QSize, QEvent
 
 import qtawesome as qta
 
@@ -121,8 +121,8 @@ class MainWindow(QMainWindow):
         self.open_files_btn.setIcon(qta.icon('fa5s.folder-open'))
         self.open_files_btn.setPopupMode(QToolButton.InstantPopup)
         open_menu = QMenu(self)
-        open_menu.addAction("Open Folder…", self.select_folder)
-        open_menu.addAction("Open File…", self.select_multiple_files)
+        open_menu.addAction("Open Single File", self.select_multiple_files)
+        open_menu.addAction("Open Folder", self.select_folder)
         self.open_files_btn.setMenu(open_menu)
         left_layout.addWidget(self.open_files_btn)
 
@@ -155,11 +155,6 @@ class MainWindow(QMainWindow):
         self.settings_btn = QPushButton("Settings")
         self.settings_btn.setIcon(qta.icon('fa5s.cog'))
         self.settings_btn.clicked.connect(self.open_spectrogram_settings)
-
-        self.params_btn = QPushButton("Parameters")
-        self.params_btn.setIcon(qta.icon('fa5s.sliders-h'))
-        self.params_btn.setCheckable(True)
-        self.params_btn.toggled.connect(self.toggle_param_panel)
 
         # Auto-Detect
         self.auto_detect_btn = QPushButton("Auto-Detect")
@@ -208,7 +203,6 @@ class MainWindow(QMainWindow):
         for w in [
             self.set_csv_btn,
             self.settings_btn,
-            self.params_btn,
             self.auto_detect_btn,
         ]:
             top_bar.addWidget(w)
@@ -244,24 +238,37 @@ class MainWindow(QMainWindow):
         right_layout.addWidget(self.info_label)
 
         # Spectrogram canvas
-        canvas_container = QFrame()
-        canvas_container.setObjectName("card")
-        canvas_layout = QVBoxLayout(canvas_container)
+        self.canvas_container = QFrame()
+        self.canvas_container.setObjectName("card")
+        canvas_layout = QVBoxLayout(self.canvas_container)
         canvas_layout.setContentsMargins(4,4,4,4)
         canvas_layout.addWidget(self.canvas)
         shadow_c = QGraphicsDropShadowEffect()
         shadow_c.setBlurRadius(16)
         shadow_c.setColor(Qt.black)
         shadow_c.setOffset(0,1)
-        canvas_container.setGraphicsEffect(shadow_c)
-        right_layout.addWidget(canvas_container)
-
-        # Audio controls
-        right_layout.addWidget(self.audio_player)
+        self.canvas_container.setGraphicsEffect(shadow_c)
+        self.canvas_container.installEventFilter(self)
+        right_layout.addWidget(self.canvas_container)
 
         self.param_panel = ParamPanel(self)
-        self.param_panel.setVisible(False)
+        self.param_panel.toggle(False)
+        self.param_panel.bind_detector(self.detector)
         right_layout.addWidget(self.param_panel)
+
+        controls_layout = QHBoxLayout()
+        controls_layout.setContentsMargins(0,0,0,0)
+        controls_layout.setAlignment(Qt.AlignCenter)
+
+        self.dashboard_btn = QPushButton()
+        self.dashboard_btn.setCheckable(True)
+        self.dashboard_btn.setIcon(qta.icon('fa5s.sliders-h'))
+        self.dashboard_btn.setToolTip('Show Detection Dashboard')
+        self.dashboard_btn.toggled.connect(self.toggle_param_panel)
+
+        controls_layout.addWidget(self.audio_player)
+        controls_layout.addWidget(self.dashboard_btn)
+        right_layout.addLayout(controls_layout)
         shadow_r = QGraphicsDropShadowEffect()
         shadow_r.setBlurRadius(20)
         shadow_r.setColor(Qt.black)
@@ -304,6 +311,9 @@ class MainWindow(QMainWindow):
         QShortcut(QKeySequence(Qt.Key_Right), self).activated.connect(self.load_next_file)
         QShortcut(QKeySequence("Ctrl+S"), self).activated.connect(self.open_spectrogram_settings)
         QShortcut(QKeySequence("Ctrl+Return"), self).activated.connect(self.run_detection)
+
+        # adjust file list height to match spectrogram
+        self.update_file_list_height()
 
     def add_undo_action(self, action):
         self.undo_stack.append(action)
@@ -650,7 +660,16 @@ class MainWindow(QMainWindow):
     def toggle_param_panel(self, visible):
         self.param_panel.toggle(visible)
         icon = qta.icon('fa5s.chevron-down') if visible else qta.icon('fa5s.sliders-h')
-        self.params_btn.setIcon(icon)
+        self.dashboard_btn.setIcon(icon)
+
+    def update_file_list_height(self):
+        if hasattr(self, 'canvas_container'):
+            self.file_list.setFixedHeight(self.canvas_container.height())
+
+    def eventFilter(self, obj, event):
+        if obj is getattr(self, 'canvas_container', None) and event.type() == QEvent.Resize:
+            self.update_file_list_height()
+        return super().eventFilter(obj, event)
 
     def open_detector_params(self):
         dlg = DetectorParamsDialog(self, detector=self.detector)

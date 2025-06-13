@@ -30,10 +30,6 @@ class SpectrogramSettingsDialog(QDialog):
         self.cmap_combo.setCurrentText(p.get("colormap", "magma"))
         layout.addRow("Colormap", self.cmap_combo)
 
-        self.gain_combo = QComboBox()
-        self.gain_combo.addItems(["x1", "x2", "x4"])
-        self.gain_combo.setCurrentText(f"x{p.get('gain', 1)}")
-        layout.addRow("Gain", self.gain_combo)
 
         buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
         buttons.accepted.connect(self.accept)
@@ -45,5 +41,4 @@ class SpectrogramSettingsDialog(QDialog):
             "window_size": self.nperseg_spin.value(),
             "overlap": self.overlap_spin.value(),
             "colormap": self.cmap_combo.currentText(),
-            "gain": int(self.gain_combo.currentText().lstrip('x'))
         }

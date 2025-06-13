@@ -1,12 +1,12 @@
 from PyQt5.QtWidgets import (
-    QFrame, QVBoxLayout, QLabel, QGroupBox, QCheckBox, QHBoxLayout,
-    QSlider, QSpinBox, QFormLayout, QComboBox
+    QFrame, QHBoxLayout, QVBoxLayout, QLabel, QGroupBox,
+    QSlider, QSpinBox, QFormLayout
 )
 from PyQt5.QtCore import Qt, QPropertyAnimation
 
 
 class ParamPanel(QFrame):
-    """Collapsible bottom drawer showing filters, detection parameters and stats."""
+    """Collapsible bottom drawer showing detection summary and parameters."""
 
     def __init__(self, main_window):
         super().__init__()
@@ -17,68 +17,31 @@ class ParamPanel(QFrame):
         self.animation = QPropertyAnimation(self, b"maximumHeight")
         self.animation.setDuration(250)
 
-        layout = QVBoxLayout(self)
+        layout = QHBoxLayout(self)
         layout.setContentsMargins(12, 12, 12, 12)
-        layout.setSpacing(10)
+        layout.setSpacing(20)
 
-        # ----- Filter Settings -----
-        filter_box = QGroupBox("Filter Settings")
-        f_layout = QFormLayout(filter_box)
-        self.filter_checks = {}
-        self.filter_params = {}
-        for name in ["NLMS", "LMS", "ALE", "RLS", "Wiener"]:
-            cb = QCheckBox(name)
-            self.filter_checks[name] = cb
-            if name == "ALE":
-                row = QHBoxLayout()
-                mu = QSpinBox(); mu.setRange(0, 100); mu.setValue(1)
-                lam = QSpinBox(); lam.setRange(0, 100); lam.setValue(1)
-                delay = QSpinBox(); delay.setRange(1, 20); delay.setValue(1)
-                self.filter_params[name] = (mu, lam, delay)
-                row.addWidget(cb); row.addWidget(mu); row.addWidget(lam); row.addWidget(delay)
-                f_layout.addRow(row)
-            else:
-                val = QSpinBox(); val.setRange(0, 100); val.setValue(1)
-                self.filter_params[name] = (val,)
-                row = QHBoxLayout(); row.addWidget(cb); row.addWidget(val)
-                f_layout.addRow(row)
-        layout.addWidget(filter_box)
+        # ----- Summary -----
+        summary_box = QGroupBox("Detection Summary")
+        s_layout = QVBoxLayout(summary_box)
+        self.tracks_label = QLabel("0 Tracks detected")
+        self.method_label = QLabel("Method: -")
+        self.time_label = QLabel("Runtime: -")
+        for lbl in (self.tracks_label, self.method_label, self.time_label):
+            s_layout.addWidget(lbl)
+        layout.addWidget(summary_box)
 
-        # ----- Detection Parameters -----
+        # ----- Parameters -----
         det_box = QGroupBox("Detection Parameters")
         d_layout = QFormLayout(det_box)
         self.threshold_slider, self.threshold_spin = self._add_slider_spin(d_layout, "Power Threshold", 0, 100)
         self.prom_slider, self.prom_spin = self._add_slider_spin(d_layout, "Peak Prominence", 0, 50)
         self.jump_slider, self.jump_spin = self._add_slider_spin(d_layout, "Max Hz Jump", 0, 400)
-        self.len_slider, self.len_spin = self._add_slider_spin(d_layout, "Min Track Length", 0, 10)
+        self.len_slider, self.len_spin = self._add_slider_spin(d_layout, "Track Min Length", 0, 10)
         self.std_slider, self.std_spin = self._add_slider_spin(d_layout, "Track Freq Std Max", 0, 50)
-        layout.addWidget(det_box)
+        layout.addWidget(det_box, 1)
 
-        # ----- Spectrogram View -----
-        spec_box = QGroupBox("Spectrogram View")
-        s_layout = QFormLayout(spec_box)
-        self.range_slider, self.range_spin = self._add_slider_spin(s_layout, "Dynamic Range (dB)", 40, 120)
-        self.fft_combo = QComboBox()
-        self.fft_combo.addItems(["1024", "2048", "4096", "8192"])
-        s_layout.addRow("FFT Window", self.fft_combo)
-        self.cmap_combo = QComboBox()
-        self.cmap_combo.addItems(["gray", "viridis", "magma", "inferno", "plasma"])
-        self.cmap_combo.currentTextChanged.connect(self.main.on_change_cmap)
-        s_layout.addRow("Colormap", self.cmap_combo)
-        self.time_cb = QCheckBox("Time scale")
-        self.freq_cb = QCheckBox("Frequency scale")
-        self.grid_cb = QCheckBox("Grid lines")
-        s_layout.addRow(self.time_cb)
-        s_layout.addRow(self.freq_cb)
-        s_layout.addRow(self.grid_cb)
-        layout.addWidget(spec_box)
-
-        # ----- Stats -----
-        stats_box = QGroupBox("Detection Info")
-        stats_layout = QVBoxLayout(stats_box)
-        self.stats_label = QLabel("Tracks detected: 0")
-        stats_layout.addWidget(self.stats_label)
-        layout.addWidget(stats_box)
+        self.detector = None
 
     def _add_slider_spin(self, form, label, minv, maxv):
         slider = QSlider(Qt.Horizontal)
@@ -93,6 +56,20 @@ class ParamPanel(QFrame):
         form.addRow(label, row)
         return slider, spin
 
+    def bind_detector(self, detector):
+        self.detector = detector
+        self.threshold_slider.setValue(int(detector.power_threshold * 100))
+        self.prom_slider.setValue(int(detector.peak_prominence * 100))
+        self.jump_slider.setValue(int(detector.max_freq_jump_hz))
+        self.len_slider.setValue(detector.min_track_length_frames)
+        self.std_slider.setValue(int(detector.max_track_freq_std_hz))
+
+        self.threshold_slider.valueChanged.connect(lambda v: setattr(detector, 'power_threshold', v / 100))
+        self.prom_slider.valueChanged.connect(lambda v: setattr(detector, 'peak_prominence', v / 100))
+        self.jump_slider.valueChanged.connect(lambda v: setattr(detector, 'max_freq_jump_hz', v))
+        self.len_slider.valueChanged.connect(lambda v: setattr(detector, 'min_track_length_frames', v))
+        self.std_slider.valueChanged.connect(lambda v: setattr(detector, 'max_track_freq_std_hz', v))
+
     def toggle(self, show: bool):
         self._expanded = show
         start = self.maximumHeight()
@@ -103,5 +80,6 @@ class ParamPanel(QFrame):
         self.animation.start()
 
     def update_stats(self, tracks: int, method: str, duration: float):
-        self.stats_label.setText(
-            f"Tracks detected: {tracks} | Method: {method} | {duration:.1f}s")
+        self.tracks_label.setText(f"{tracks} Tracks detected")
+        self.method_label.setText(f"Method: {method}")
+        self.time_label.setText(f"Runtime: {duration:.1f}s")
