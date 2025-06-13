@@ -109,6 +109,17 @@ class MainWindow(QMainWindow):
         self.audio_player.prevRequested.connect(self.load_prev_file)
         self.audio_player.nextRequested.connect(self.load_next_file)
 
+        # Default spectrogram parameters
+        self.spectrogram_params = {
+            "window_size": 4096,
+            "overlap": 75,
+            "colormap": "magma",
+        }
+
+        # Detector instance used by auto-detection and parameter panel
+        self.detector = DopplerDetector()
+        self.detector.spectrogram_params = self.spectrogram_params
+
         # --- Left pane (file list) ---
         left_frame = QFrame()
         left_frame.setObjectName("card")
@@ -124,7 +135,17 @@ class MainWindow(QMainWindow):
         open_menu.addAction("Open Single File", self.select_multiple_files)
         open_menu.addAction("Open Folder", self.select_folder)
         self.open_files_btn.setMenu(open_menu)
-        left_layout.addWidget(self.open_files_btn)
+
+        self.remove_file_btn = QToolButton()
+        self.remove_file_btn.setText("Remove File")
+        self.remove_file_btn.setIcon(qta.icon('fa5s.trash'))
+        self.remove_file_btn.clicked.connect(self.remove_selected_file)
+
+        open_layout = QHBoxLayout()
+        open_layout.setContentsMargins(0, 0, 0, 0)
+        open_layout.addWidget(self.open_files_btn)
+        open_layout.addWidget(self.remove_file_btn)
+        left_layout.addLayout(open_layout)
 
         self.file_list = FileListWidget()
         self.file_list.itemClicked.connect(self.load_file)
@@ -294,16 +315,7 @@ class MainWindow(QMainWindow):
         self.audio_folder = None
         self.current_file = None
         self.csv_path = None
-        self.spectrogram_params = {
-            "window_size": 4096,
-            "overlap": 75,
-            "colormap": "magma"
-        }
         self.undo_stack = []
-
-        # Detector
-        self.detector = DopplerDetector()
-        self.detector.spectrogram_params = self.spectrogram_params
 
         # Undo shortcut
         QShortcut(QKeySequence("Ctrl+Z"), self).activated.connect(self.perform_undo)
