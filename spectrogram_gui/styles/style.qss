@@ -86,6 +86,11 @@ QLabel#fileListHeading {
     font-weight: 600;
     margin-top: -2px; /* align with top buttons */
     margin-bottom: 4px;
+    padding: 4px 8px;
+    border-radius: 6px;
+    color: #F8FAFC;
+    background: qlineargradient(x1:0, y1:0, x2:1, y2:0,
+                               stop:0 #93C5FD, stop:1 #3B82F6);
 }
 
 QLabel#fileListSubheading {
@@ -95,7 +100,8 @@ QLabel#fileListSubheading {
 }
 
 /* --- 5. Cards -------------------------------------------------- */
-QFrame#card {
+QFrame#card,
+QGroupBox#card {
     background: qlineargradient(x1:0, y1:0, x2:1, y2:1,
                                stop:0 #1E293B, stop:1 #334155);
     border-radius: 10px;
@@ -273,20 +279,5 @@ QToolButton#togglePanel[checked="true"] {
 }
 
 /* Group box styling used for STFT settings */
-QGroupBox#stftSettings {
-    background: qlineargradient(x1:0, y1:0, x2:1, y2:1,
-                               stop:0 #3B82F6, stop:1 #8B5CF6);
-    border: 1px solid #334155;
-    border-radius: 8px;
-    margin-top: 12px;
-    padding: 8px;
-}
-
-QGroupBox#stftSettings::title {
-    subcontrol-origin: margin;
-    subcontrol-position: top left;
-    padding: 4px 8px;
-    font-weight: bold;
-}
 
 /* End of futuristic dark theme */

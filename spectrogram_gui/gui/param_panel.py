@@ -37,7 +37,8 @@ class ParamPanel(QFrame):
 
         # ----- Spectrogram Settings -----
         spec_box = QGroupBox("Spectrogram Settings")
-        spec_box.setObjectName("stftSettings")
+        # use same card styling as detection summary
+        spec_box.setObjectName("card")
         s2_layout = QFormLayout(spec_box)
         s2_layout.setContentsMargins(8, 8, 8, 8)
         s2_layout.setSpacing(8)
