@@ -1,6 +1,6 @@
 from PyQt5.QtWidgets import (
     QFrame, QHBoxLayout, QVBoxLayout, QLabel, QGroupBox,
-    QSpinBox, QFormLayout, QComboBox
+    QFormLayout, QComboBox, QSlider
 )
 from PyQt5.QtCore import Qt, QPropertyAnimation
 
@@ -26,30 +26,37 @@ class ParamPanel(QFrame):
         summary_box.setObjectName("card")
         s_layout = QVBoxLayout(summary_box)
         self.tracks_label = QLabel("0 Tracks detected")
-        self.tracks_label.setStyleSheet(
-            "font-size:22px;font-weight:600;color:#7DD3FC")
+        self.tracks_label.setObjectName("summaryLine")
         self.method_label = QLabel("Method: -")
-        self.method_label.setStyleSheet("color:#CBD5E1")
+        self.method_label.setObjectName("summaryLine")
         self.time_label = QLabel("Runtime: -")
-        self.time_label.setStyleSheet("color:#CBD5E1")
+        self.time_label.setObjectName("summaryLine")
         for lbl in (self.tracks_label, self.method_label, self.time_label):
             s_layout.addWidget(lbl)
         layout.addWidget(summary_box)
 
         # ----- Spectrogram Settings -----
         spec_box = QGroupBox("Spectrogram Settings")
-        spec_box.setObjectName("card")
+        spec_box.setObjectName("stftSettings")
         s2_layout = QFormLayout(spec_box)
 
-        self.nperseg_spin = QSpinBox()
-        self.nperseg_spin.setRange(256, 16384)
-        self.nperseg_spin.setSingleStep(256)
-        s2_layout.addRow("Window Size", self.nperseg_spin)
+        self.nperseg_slider = QSlider(Qt.Horizontal)
+        self.nperseg_slider.setRange(1, 64)  # 1=>256
+        self.nperseg_value = QLabel()
+        self.nperseg_value.setObjectName("sliderLabel")
+        nperseg_row = QHBoxLayout()
+        nperseg_row.addWidget(self.nperseg_slider, 1)
+        nperseg_row.addWidget(self.nperseg_value)
+        s2_layout.addRow("Window Size", nperseg_row)
 
-        self.overlap_spin = QSpinBox()
-        self.overlap_spin.setRange(0, 95)
-        self.overlap_spin.setSuffix(" %")
-        s2_layout.addRow("Overlap", self.overlap_spin)
+        self.overlap_slider = QSlider(Qt.Horizontal)
+        self.overlap_slider.setRange(0, 95)
+        self.overlap_value = QLabel()
+        self.overlap_value.setObjectName("sliderLabel")
+        overlap_row = QHBoxLayout()
+        overlap_row.addWidget(self.overlap_slider, 1)
+        overlap_row.addWidget(self.overlap_value)
+        s2_layout.addRow("Overlap", overlap_row)
 
         self.cmap_combo = QComboBox()
         self.cmap_combo.addItems(["gray", "viridis", "magma", "inferno", "plasma"])
@@ -61,12 +68,26 @@ class ParamPanel(QFrame):
 
     def bind_settings(self):
         p = self.main.spectrogram_params
-        self.nperseg_spin.setValue(p.get("window_size", 4096))
-        self.overlap_spin.setValue(p.get("overlap", 75))
+        nperseg_val = p.get("window_size", 4096)
+        self.nperseg_slider.setValue(int(nperseg_val / 256))
+        self.nperseg_value.setText(str(nperseg_val))
+
+        overlap_val = p.get("overlap", 75)
+        self.overlap_slider.setValue(overlap_val)
+        self.overlap_value.setText(f"{overlap_val} %")
         self.cmap_combo.setCurrentText(p.get("colormap", "magma"))
 
-        self.nperseg_spin.valueChanged.connect(lambda v: p.__setitem__("window_size", v))
-        self.overlap_spin.valueChanged.connect(lambda v: p.__setitem__("overlap", v))
+        def set_nperseg(v):
+            value = max(1, v) * 256
+            self.nperseg_value.setText(str(value))
+            p["window_size"] = value
+
+        def set_overlap(v):
+            self.overlap_value.setText(f"{v} %")
+            p["overlap"] = v
+
+        self.nperseg_slider.valueChanged.connect(set_nperseg)
+        self.overlap_slider.valueChanged.connect(set_overlap)
         self.cmap_combo.currentTextChanged.connect(lambda t: p.__setitem__("colormap", t))
 
     def toggle(self, show: bool):

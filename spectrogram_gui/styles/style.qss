@@ -95,12 +95,14 @@ QLabel#fileListSubheading {
 
 /* --- 5. Cards -------------------------------------------------- */
 QFrame#card {
-    background-color: #334155;
+    background: qlineargradient(x1:0, y1:0, x2:1, y2:1,
+                               stop:0 #1E293B, stop:1 #334155);
     border-radius: 10px;
 }
 
 QFrame#paramPanel {
-    background-color: #334155;
+    background: qlineargradient(x1:0, y1:0, x2:1, y2:1,
+                               stop:0 #1E293B, stop:1 #334155);
     border-radius: 10px;
 }
 
@@ -117,6 +119,12 @@ QLabel[class="sliderLabel"] {
     font-size: 13px;
     color: #E0F2FE;
     padding-right: 8px;
+}
+
+QLabel#summaryLine {
+    font-size: 22px;
+    font-weight: 600;
+    color: #7DD3FC;
 }
 
 QFrame#card[hasShadow="true"] {
@@ -265,7 +273,8 @@ QToolButton#togglePanel[checked="true"] {
 
 /* Group box styling used for STFT settings */
 QGroupBox#stftSettings {
-    background-color: #1E293B;
+    background: qlineargradient(x1:0, y1:0, x2:1, y2:1,
+                               stop:0 #3B82F6, stop:1 #8B5CF6);
     border: 1px solid #334155;
     border-radius: 8px;
     margin-top: 12px;
