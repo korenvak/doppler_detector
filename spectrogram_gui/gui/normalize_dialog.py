@@ -41,8 +41,8 @@ class NormalizeDialog(QDialog):
         prev_sxx = self.main_window.canvas.Sxx_raw.copy()
         prev_times = self.main_window.canvas.times.copy()
         prev_freqs = self.main_window.canvas.freqs.copy()
-        self.main_window.undo_stack.append((wave, prev_sxx, prev_times, prev_freqs))
-        self.main_window.undo_btn.setEnabled(True)
+        prev_start = self.main_window.canvas.start_time
+        self.main_window.add_undo_action(("waveform", (wave, prev_sxx, prev_times, prev_freqs, prev_start)))
 
         # Normalize waveform segment
         wave_data, sr = self.main_window.audio_player.get_waveform(), self.main_window.audio_player.sr
@@ -70,7 +70,7 @@ class NormalizeDialog(QDialog):
             new_wave, sr, "", params=self.main_window.spectrogram_params
         )
         self.main_window.canvas.plot_spectrogram(
-            freqs, times, Sxx, self.main_window.canvas.start_time
+            freqs, times, Sxx, self.main_window.canvas.start_time, maintain_view=True
         )
 
         self.accept()

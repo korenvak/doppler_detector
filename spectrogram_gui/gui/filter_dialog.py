@@ -70,6 +70,13 @@ class FilterDialog(QDialog):
         else:
             sos = butter(4, [low, high], btype="bandpass", fs=sr, output="sos")
 
+        # backup for undo
+        prev_sxx = self.main.canvas.Sxx_raw.copy()
+        prev_times = self.main.canvas.times.copy()
+        prev_freqs = self.main.canvas.freqs.copy()
+        prev_start = self.main.canvas.start_time
+        self.main.add_undo_action(("waveform", (wave.copy(), prev_sxx, prev_times, prev_freqs, prev_start)))
+
         seg = wave[i0:i1].copy()
         filtered = sosfilt(sos, seg)
         new_wave = wave.copy(); new_wave[i0:i1] = filtered
@@ -79,5 +86,5 @@ class FilterDialog(QDialog):
         freqs, times, Sxx, _ = compute_spectrogram(
             new_wave, sr, "", params=self.main.spectrogram_params
         )
-        self.main.canvas.plot_spectrogram(freqs, times, Sxx, self.main.canvas.start_time)
+        self.main.canvas.plot_spectrogram(freqs, times, Sxx, self.main.canvas.start_time, maintain_view=True)
         self.accept()

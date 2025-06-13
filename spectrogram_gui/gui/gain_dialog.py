@@ -64,6 +64,13 @@ class GainDialog(QDialog):
             QMessageBox.warning(self, "Selection Error", "Selected time range is invalid.")
             return
 
+        # backup for undo
+        prev_sxx = self.main_window.canvas.Sxx_raw.copy()
+        prev_times = self.main_window.canvas.times.copy()
+        prev_freqs = self.main_window.canvas.freqs.copy()
+        prev_start = self.main_window.canvas.start_time
+        self.main_window.add_undo_action(("waveform", (wave.copy(), prev_sxx, prev_times, prev_freqs, prev_start)))
+
         # Apply gain
         new_wave = wave.copy()
         new_wave[idx0:idx1] *= gain_factor
@@ -76,7 +83,7 @@ class GainDialog(QDialog):
             new_wave, sr, "", params=self.main_window.spectrogram_params
         )
         self.main_window.canvas.plot_spectrogram(
-            freqs, times, Sxx, self.main_window.canvas.start_time
+            freqs, times, Sxx, self.main_window.canvas.start_time, maintain_view=True
         )
 
         self.accept()

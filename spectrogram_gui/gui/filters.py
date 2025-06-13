@@ -148,10 +148,9 @@ class CombinedFilterDialog(QDialog):
         prev_times = self.main.canvas.current_times.copy()
         prev_freqs = self.main.canvas.current_freqs.copy()
         prev_start = self.main.canvas.start_time
-        self.main.undo_stack.append((
+        self.main.add_undo_action(("waveform", (
             prev_wave.copy(), prev_sxx, prev_times, prev_freqs, prev_start
-        ))
-        self.main.undo_btn.setEnabled(True)
+        )))
 
         # 4) apply each filter
         order = min(32, len(seg))
@@ -201,16 +200,9 @@ class CombinedFilterDialog(QDialog):
         new_wave[i0:i1] = out
         self.main.audio_player.replace_waveform(new_wave)
 
-        # Preserve the current zoom level so the view does not reset after filtering
-        current_xrange, current_yrange = self.main.canvas.vb.viewRange()
-
         freqs, times, Sxx, _ = compute_spectrogram(
             new_wave, sr, "", params=self.main.spectrogram_params
         )
-        self.main.canvas.plot_spectrogram(freqs, times, Sxx, self.main.canvas.start_time)
-
-        # Restore zoom if it was previously set
-        self.main.canvas.vb.setXRange(*current_xrange, padding=0)
-        self.main.canvas.vb.setYRange(*current_yrange, padding=0)
+        self.main.canvas.plot_spectrogram(freqs, times, Sxx, self.main.canvas.start_time, maintain_view=True)
 
         self.accept()

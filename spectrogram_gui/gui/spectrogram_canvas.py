@@ -112,6 +112,10 @@ class SpectrogramCanvas(QWidget):
         self.alt_lines = []
         self.alt_texts = []
 
+        # Persist last view range for zoom persistence
+        self.view_state = None
+        self.vb.sigRangeChanged.connect(self._store_view_state)
+
         # Range selection
         self.range_selector = RangeSelector(self.plot)
         self.range_selector.range_changed.connect(self.on_range_selected)
@@ -134,6 +138,12 @@ class SpectrogramCanvas(QWidget):
         }
         self.auto_tracks_items = []
 
+    def _store_view_state(self, *_, **__):
+        try:
+            self.view_state = self.vb.viewRange()
+        except Exception:
+            self.view_state = None
+
     def clear_auto_tracks(self):
         print("[Canvas] clear_auto_tracks()")
         for item in self.auto_tracks_items:
@@ -142,6 +152,13 @@ class SpectrogramCanvas(QWidget):
             except:
                 pass
         self.auto_tracks_items = []
+
+    def remove_items(self, items):
+        for item in items:
+            try:
+                self.plot.removeItem(item)
+            except Exception:
+                pass
 
     def plot_auto_tracks(self, tracks):
         """
@@ -159,13 +176,14 @@ class SpectrogramCanvas(QWidget):
             self.plot.addItem(curve)
             self.auto_tracks_items.append(curve)
 
-    def plot_spectrogram(self, freqs, times, Sxx_raw, start_time):
+    def plot_spectrogram(self, freqs, times, Sxx_raw, start_time, maintain_view=False):
         """
         Plot the spectrogram image (freqs × times × Sxx_raw),
         then clear any old ALT crosshairs, range selections,
         auto-tracks, and snapshot current arrays for filters/undo.
         """
         # --- 0) Wipe out any existing auto-detect tracks immediately
+        old_view = self.view_state if maintain_view else None
         self.clear_auto_tracks()
 
         # --- 1) Store the data + snapshots for filters & undo
@@ -204,8 +222,13 @@ class SpectrogramCanvas(QWidget):
             yMin=freqs[0], yMax=freqs[-1]
         )
 
-        # --- 7) Auto-range one shot
-        self.vb.autoRange()
+        # --- 7) Auto-range one shot or restore previous view
+        if old_view is not None:
+            xr = [max(times[0], old_view[0][0]), min(times[-1], old_view[0][1])]
+            yr = [max(freqs[0], old_view[1][0]), min(freqs[-1], old_view[1][1])]
+            self.vb.setRange(xRange=xr, yRange=yr, padding=0)
+        else:
+            self.vb.autoRange()
 
         # --- 8) Remove any old ALT-crosshairs + labels
         for item in self.alt_lines + self.alt_texts:
@@ -230,7 +253,7 @@ class SpectrogramCanvas(QWidget):
             return
         self.colormap_name = cmap_name
         if self.freqs is not None and self.times is not None and self.Sxx_raw is not None:
-            self.plot_spectrogram(self.freqs, self.times, self.Sxx_raw, self.start_time)
+            self.plot_spectrogram(self.freqs, self.times, self.Sxx_raw, self.start_time, maintain_view=True)
 
     def get_colormap_lut(self, cmap_name):
         """
@@ -367,4 +390,7 @@ class SpectrogramCanvas(QWidget):
     def resizeEvent(self, ev):
         super().resizeEvent(ev)
         if hasattr(self, 'vb'):
-            self.vb.autoRange()
+            if self.view_state is not None:
+                self.vb.setRange(xRange=self.view_state[0], yRange=self.view_state[1], padding=0)
+            else:
+                self.vb.autoRange()

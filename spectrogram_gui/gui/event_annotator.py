@@ -9,7 +9,7 @@ from spectrogram_gui.utils.snapshot_utils import save_snapshot
 from spectrogram_gui.gui.annotation_editor import AnnotationEditorDialog
 
 class EventAnnotator:
-    def __init__(self, canvas):
+    def __init__(self, canvas, undo_callback=None):
         """
         Initialize with a reference to the SpectrogramCanvas.
         """
@@ -21,6 +21,9 @@ class EventAnnotator:
         )
         self.start_time_pending = None
         self.metadata = {}
+        self.undo_callback = undo_callback
+        self.graphics_history = []  # keep track of plot items per annotation
+        self.current_items = []
 
     def set_metadata(self, site, pixel, file_start):
         """
@@ -82,6 +85,7 @@ class EventAnnotator:
                 pen=pg.mkPen(color=(0, 255, 255), style=Qt.DashLine)
             )
             self.canvas.plot.addItem(line)
+            self.current_items = [label, line]
             return
 
         # Second click → end
@@ -180,6 +184,29 @@ class EventAnnotator:
         )
         self.canvas.plot.addItem(line)
 
+        items = self.current_items + [label, line]
+        self.graphics_history.append(items)
+        self.current_items = []
+        if self.undo_callback:
+            self.undo_callback(("annotation", None))
+
     def count(self):
         """Return the number of annotations recorded so far."""
         return len(self.df)
+
+    def undo_last(self):
+        if not self.graphics_history:
+            return
+        items = self.graphics_history.pop()
+        for it in items:
+            try:
+                self.canvas.plot.removeItem(it)
+            except Exception:
+                pass
+        if not self.df.empty:
+            self.df = self.df.iloc[:-1].copy()
+            if self.csv_path:
+                try:
+                    self.df.to_csv(self.csv_path, index=False)
+                except Exception:
+                    pass

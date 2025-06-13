@@ -17,6 +17,7 @@ import qtawesome as qta
 
 from spectrogram_gui.gui.spectrogram_canvas import SpectrogramCanvas
 from spectrogram_gui.gui.event_annotator import EventAnnotator
+from spectrogram_gui.gui.detection_manager import DetectionManager
 from spectrogram_gui.gui.sound_device_player import SoundDevicePlayer
 from spectrogram_gui.gui.filter_dialog import FilterDialog
 from spectrogram_gui.gui.filters import CombinedFilterDialog
@@ -101,7 +102,8 @@ class MainWindow(QMainWindow):
         self.canvas.hover_callback = self.update_hover_info
         self.canvas.click_callback = self.seek_from_click
 
-        self.annotator = EventAnnotator(self.canvas)
+        self.annotator = EventAnnotator(self.canvas, undo_callback=self.add_undo_action)
+        self.detection_manager = DetectionManager()
         self.audio_player = SoundDevicePlayer()
 
         # --- Left pane (file list) ---
@@ -296,6 +298,10 @@ class MainWindow(QMainWindow):
         # Undo shortcut
         QShortcut(QKeySequence("Ctrl+Z"), self).activated.connect(self.perform_undo)
 
+    def add_undo_action(self, action):
+        self.undo_stack.append(action)
+        self.undo_btn.setEnabled(True)
+
     def run_detection(self):
         """
         1) Show DetectorParamsDialog.
@@ -362,6 +368,8 @@ class MainWindow(QMainWindow):
             # 4) Clear old and draw new
             self.canvas.clear_auto_tracks()
             self.canvas.plot_auto_tracks(processed)
+            self.detection_manager.record(self.canvas.auto_tracks_items.copy())
+            self.add_undo_action(("detection", None))
 
         except Exception as e:
             QMessageBox.warning(self, "Auto-Detect Error", str(e))
@@ -584,12 +592,11 @@ class MainWindow(QMainWindow):
         start_time = self.canvas.start_time
 
         # Push current state to the undo stack
-        self.undo_stack.append((wave.copy(),
+        self.add_undo_action(("waveform", (wave.copy(),
                                 Sxx_raw.copy(),
                                 times.copy(),
                                 freqs.copy(),
-                                start_time))
-        self.undo_btn.setEnabled(True)
+                                start_time)))
 
         dlg = FilterDialog(self, mode=filter_type)
         dlg.exec_()
@@ -619,12 +626,11 @@ class MainWindow(QMainWindow):
         start_time = self.canvas.start_time
 
         # Push current state to the undo stack
-        self.undo_stack.append((wave.copy(),
+        self.add_undo_action(("waveform", (wave.copy(),
                                 Sxx_raw.copy(),
                                 times.copy(),
                                 freqs.copy(),
-                                start_time))
-        self.undo_btn.setEnabled(True)
+                                start_time)))
 
         dlg = GainDialog(self)
         dlg.exec_()
@@ -633,9 +639,15 @@ class MainWindow(QMainWindow):
     def perform_undo(self):
         if not self.undo_stack:
             return
-        prev_wave, prev_sxx, prev_times, prev_freqs, prev_start = self.undo_stack.pop()
-        self.audio_player.replace_waveform(prev_wave)
-        self.canvas.plot_spectrogram(prev_freqs, prev_times, prev_sxx, prev_start)
+        action, data = self.undo_stack.pop()
+        if action == "waveform":
+            prev_wave, prev_sxx, prev_times, prev_freqs, prev_start = data
+            self.audio_player.replace_waveform(prev_wave)
+            self.canvas.plot_spectrogram(prev_freqs, prev_times, prev_sxx, prev_start, maintain_view=True)
+        elif action == "annotation":
+            self.annotator.undo_last()
+        elif action == "detection":
+            self.detection_manager.undo_last(self.canvas)
         if not self.undo_stack:
             self.undo_btn.setEnabled(False)
 
