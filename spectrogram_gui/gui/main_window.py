@@ -25,6 +25,7 @@ from spectrogram_gui.gui.fft_stats_dialog import FFTDialog
 from spectrogram_gui.gui.gain_dialog import GainDialog
 from spectrogram_gui.gui.params_dialog import ParamsDialog
 from spectrogram_gui.gui.detector_params_dialog import DetectorParamsDialog
+from spectrogram_gui.gui.param_panel import ParamPanel
 from spectrogram_gui.utils.audio_utils import load_audio_with_filters
 from spectrogram_gui.utils.spectrogram_utils import (
     compute_spectrogram,
@@ -146,6 +147,14 @@ class MainWindow(QMainWindow):
         self.open_file_btn.setIcon(qta.icon('fa5s.file'))
         self.open_file_btn.clicked.connect(self.select_multiple_files)
 
+        self.prev_file_btn = QPushButton()
+        self.prev_file_btn.setIcon(qta.icon('fa5s.chevron-left'))
+        self.prev_file_btn.clicked.connect(self.load_prev_file)
+
+        self.next_file_btn = QPushButton()
+        self.next_file_btn.setIcon(qta.icon('fa5s.chevron-right'))
+        self.next_file_btn.clicked.connect(self.load_next_file)
+
         self.change_cmap_btn = QPushButton("Colormap")
         self.change_cmap_btn.setIcon(qta.icon('fa5s.palette'))
         cmap_menu = QMenu(self)
@@ -200,6 +209,11 @@ class MainWindow(QMainWindow):
         self.undo_btn.setEnabled(False)
         self.undo_btn.clicked.connect(self.perform_undo)
 
+        self.params_toggle_btn = QToolButton()
+        self.params_toggle_btn.setCheckable(True)
+        self.params_toggle_btn.setIcon(qta.icon('fa5s.chevron-up'))
+        self.params_toggle_btn.toggled.connect(self.toggle_param_panel)
+
         # Assemble toolbar
         top_bar = QHBoxLayout()
         top_bar.setSpacing(8)
@@ -207,6 +221,8 @@ class MainWindow(QMainWindow):
         for w in [
             self.open_folder_btn,
             self.open_file_btn,
+            self.prev_file_btn,
+            self.next_file_btn,
             self.change_cmap_btn,
             self.set_csv_btn,
             self.settings_btn,
@@ -225,7 +241,8 @@ class MainWindow(QMainWindow):
             self.filter_btn,
             self.fft_btn,
             self.gain_btn,
-            self.undo_btn
+            self.undo_btn,
+            self.params_toggle_btn
         ]:
             top_bar.addWidget(w)
 
@@ -259,6 +276,10 @@ class MainWindow(QMainWindow):
 
         # Audio controls
         right_layout.addWidget(self.audio_player)
+
+        self.param_panel = ParamPanel(self)
+        self.param_panel.setVisible(False)
+        right_layout.addWidget(self.param_panel)
         shadow_r = QGraphicsDropShadowEffect()
         shadow_r.setBlurRadius(20)
         shadow_r.setColor(Qt.black)
@@ -297,6 +318,8 @@ class MainWindow(QMainWindow):
 
         # Undo shortcut
         QShortcut(QKeySequence("Ctrl+Z"), self).activated.connect(self.perform_undo)
+        QShortcut(QKeySequence(Qt.Key_Left), self).activated.connect(self.load_prev_file)
+        QShortcut(QKeySequence(Qt.Key_Right), self).activated.connect(self.load_next_file)
 
     def add_undo_action(self, action):
         self.undo_stack.append(action)
@@ -415,7 +438,7 @@ class MainWindow(QMainWindow):
         self.load_file_from_path(item.data(Qt.UserRole))
 
 
-    def load_file_from_path(self, path):
+    def load_file_from_path(self, path, maintain_view=False):
         self.canvas.clear_annotations()
         fname = os.path.basename(path)
         self.current_file = path
@@ -444,7 +467,7 @@ class MainWindow(QMainWindow):
             QMessageBox.critical(self, "Spectrogram Error", str(e))
             return
 
-        self.canvas.plot_spectrogram(freqs, times, Sxx, timestamp)
+        self.canvas.plot_spectrogram(freqs, times, Sxx, timestamp, maintain_view=maintain_view)
         self.canvas.set_colormap(self.spectrogram_params["colormap"])
         self.annotator.set_metadata(site=site, pixel=pixel, file_start=timestamp)
 
@@ -496,7 +519,7 @@ class MainWindow(QMainWindow):
         if dlg.exec_():
             self.spectrogram_params = dlg.get_params()
             if self.current_file:
-                self.load_file_from_path(self.current_file)
+                self.load_file_from_path(self.current_file, maintain_view=True)
 
 
     def on_change_cmap(self, cmap_name):
@@ -634,6 +657,29 @@ class MainWindow(QMainWindow):
 
         dlg = GainDialog(self)
         dlg.exec_()
+
+    def toggle_param_panel(self, visible):
+        self.param_panel.setVisible(visible)
+        icon = qta.icon('fa5s.chevron-down') if visible else qta.icon('fa5s.chevron-up')
+        self.params_toggle_btn.setIcon(icon)
+
+    def open_detector_params(self):
+        dlg = DetectorParamsDialog(self, detector=self.detector)
+        dlg.exec_()
+
+    def load_prev_file(self):
+        row = self.file_list.currentRow()
+        if row > 0:
+            item = self.file_list.item(row-1)
+            self.file_list.setCurrentRow(row-1)
+            self.load_file(item)
+
+    def load_next_file(self):
+        row = self.file_list.currentRow()
+        if row < self.file_list.count()-1:
+            item = self.file_list.item(row+1)
+            self.file_list.setCurrentRow(row+1)
+            self.load_file(item)
 
 
     def perform_undo(self):
