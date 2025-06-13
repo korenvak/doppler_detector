@@ -23,6 +23,7 @@ class ParamPanel(QFrame):
 
         # ----- Detection Summary -----
         summary_box = QGroupBox("Detection Summary")
+        summary_box.setObjectName("card")
         s_layout = QVBoxLayout(summary_box)
         self.tracks_label = QLabel("0 Tracks detected")
         self.tracks_label.setStyleSheet("font-size:14px;font-weight:600")
@@ -34,6 +35,7 @@ class ParamPanel(QFrame):
 
         # ----- Filters -----
         filter_box = QGroupBox("Filters")
+        filter_box.setObjectName("card")
         f_layout = QFormLayout(filter_box)
 
         self.nlms_chk = QCheckBox("NLMS")
@@ -61,7 +63,7 @@ class ParamPanel(QFrame):
 
         # ----- Spectrogram Settings -----
         spec_box = QGroupBox("Spectrogram Settings")
-        spec_box.setObjectName("stftSettings")
+        spec_box.setObjectName("card")
         s2_layout = QFormLayout(spec_box)
 
         self.nperseg_spin = QSpinBox()
@@ -91,9 +93,12 @@ class ParamPanel(QFrame):
         slider.valueChanged.connect(spin.setValue)
         spin.valueChanged.connect(slider.setValue)
         row = QHBoxLayout()
+        row.setSpacing(6)
         row.addWidget(slider)
         row.addWidget(spin)
-        form.addRow(label, row)
+        label_widget = QLabel(label)
+        label_widget.setProperty("class", "sliderLabel")
+        form.addRow(label_widget, row)
         return slider, spin
 
     def bind_settings(self):

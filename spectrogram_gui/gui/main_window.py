@@ -136,15 +136,9 @@ class MainWindow(QMainWindow):
         open_menu.addAction("Open Folder", self.select_folder)
         self.open_files_btn.setMenu(open_menu)
 
-        self.remove_file_btn = QToolButton()
-        self.remove_file_btn.setText("Remove File")
-        self.remove_file_btn.setIcon(qta.icon('fa5s.trash'))
-        self.remove_file_btn.clicked.connect(self.remove_selected_file)
-
         open_layout = QHBoxLayout()
         open_layout.setContentsMargins(0, 0, 0, 0)
         open_layout.addWidget(self.open_files_btn)
-        open_layout.addWidget(self.remove_file_btn)
         left_layout.addLayout(open_layout)
 
         self.file_list = FileListWidget()
