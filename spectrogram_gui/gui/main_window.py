@@ -11,7 +11,7 @@ from PyQt5.QtWidgets import (
     QToolButton, QAction, QGraphicsDropShadowEffect, QShortcut
 )
 from PyQt5.QtGui import QKeySequence
-from PyQt5.QtCore import Qt
+from PyQt5.QtCore import Qt, pyqtSignal
 
 import qtawesome as qta
 
@@ -44,13 +44,23 @@ class FileListWidget(QListWidget):
     Subclass of QListWidget that:
       - Accepts external drag-drop of .wav/.flac
       - Provides internal drag-drop reordering
+      - Emits a signal when Delete is pressed
     """
+
+    fileDeleteRequested = pyqtSignal()
+
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setAcceptDrops(True)
         self.setDragDropMode(QListWidget.InternalMove)
         self.setDefaultDropAction(Qt.MoveAction)
         self.setSelectionMode(QListWidget.SingleSelection)
+
+    def keyPressEvent(self, event):
+        if event.key() in (Qt.Key_Delete, Qt.Key_Backspace):
+            self.fileDeleteRequested.emit()
+        else:
+            super().keyPressEvent(event)
 
     def dragEnterEvent(self, event):
         if event.mimeData().hasUrls():
@@ -107,6 +117,7 @@ class MainWindow(QMainWindow):
 
         self.file_list = FileListWidget()
         self.file_list.itemClicked.connect(self.load_file)
+        self.file_list.fileDeleteRequested.connect(self.remove_selected_file)
         self.file_list.setContextMenuPolicy(Qt.CustomContextMenu)
         self.file_list.customContextMenuRequested.connect(self.on_file_list_context_menu)
         left_layout.addWidget(self.file_list)
@@ -487,13 +498,17 @@ class MainWindow(QMainWindow):
 
     def on_file_list_context_menu(self, pos):
         menu = QMenu(self.file_list)
+        remove_action  = menu.addAction("Remove File")
+        menu.addSeparator()
         sort_name_asc  = menu.addAction("Sort by Name (A → Z)")
         sort_name_desc = menu.addAction("Sort by Name (Z → A)")
         sort_date_asc  = menu.addAction("Sort by Date (Old → New)")
         sort_date_desc = menu.addAction("Sort by Date (New → Old)")
 
         action = menu.exec_(self.file_list.viewport().mapToGlobal(pos))
-        if action == sort_name_asc:
+        if action == remove_action:
+            self.remove_selected_file()
+        elif action == sort_name_asc:
             self.sort_file_list_by_name(ascending=True)
         elif action == sort_name_desc:
             self.sort_file_list_by_name(ascending=False)
@@ -537,6 +552,18 @@ class MainWindow(QMainWindow):
             new_item.setIcon(qta.icon('fa5s.music'))
             new_item.setData(Qt.UserRole, full)
             self.file_list.addItem(new_item)
+
+
+    def remove_selected_file(self):
+        item = self.file_list.currentItem()
+        if not item:
+            return
+        row = self.file_list.row(item)
+        self.file_list.takeItem(row)
+        if item.data(Qt.UserRole) == self.current_file:
+            self.current_file = None
+            self.info_label.setText("No file loaded")
+            self.audio_player.stop()
 
 
     def update_hover_info(self, text):

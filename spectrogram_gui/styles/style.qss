@@ -64,12 +64,12 @@ QListWidget::item {
 }
 
 QListWidget::item:selected {
-    background-color: rgba(30, 144, 255, 160);
+    background-color: rgba(94, 179, 255, 200);
     color: #ffffff;
 }
 
 QListWidget::item:hover {
-    background-color: rgba(30, 144, 255, 120);
+    background-color: rgba(94, 179, 255, 150);
 }
 
 /* 4) QLabel styling */
@@ -177,7 +177,7 @@ QMenu::item {
 }
 
 QMenu::item:selected {
-    background-color: rgba(30, 144, 255, 160);
+    background-color: rgba(94, 179, 255, 200);
     color: #ffffff;
 }
 
@@ -192,7 +192,7 @@ QDialog {
 QTableView {
     background-color: #111111;
     gridline-color: #222222;
-    selection-background-color: rgba(30, 144, 255, 160);
+    selection-background-color: rgba(94, 179, 255, 200);
     selection-color: #ffffff;
     alternate-background-color: #1a1a1a;
 }
@@ -245,7 +245,7 @@ QPlainTextEdit, QTextEdit {
     color: #e0e0e0;
     border: 1px solid #222222;
     border-radius: 4px;
-    selection-background-color: rgba(30, 144, 255, 160);
+    selection-background-color: rgba(94, 179, 255, 200);
 }
 
 /* 15) QToolTip styling */
