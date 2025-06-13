@@ -124,24 +124,6 @@ class DetectorParamsDialog(QDialog):
         self.merge_freq_diff_spin.setValue(detector.merge_max_freq_diff_hz)
         layout.addRow("Merge Max Freq Diff [Hz]:", self.merge_freq_diff_spin)
 
-        # 18) smooth_sigma
-        self.smooth_sigma_spin = QDoubleSpinBox()
-        self.smooth_sigma_spin.setRange(0.1, 10.0)
-        self.smooth_sigma_spin.setSingleStep(0.1)
-        self.smooth_sigma_spin.setValue(detector.smooth_sigma)
-        layout.addRow("Smooth Sigma:", self.smooth_sigma_spin)
-
-        # 19) median_filter_size
-        self.median_h_spin = QSpinBox()
-        self.median_h_spin.setRange(1, 11)
-        self.median_h_spin.setValue(detector.median_filter_size[0])
-        self.median_w_spin = QSpinBox()
-        self.median_w_spin.setRange(1, 11)
-        self.median_w_spin.setValue(detector.median_filter_size[1])
-        mf_layout = QHBoxLayout()
-        mf_layout.addWidget(self.median_h_spin)
-        mf_layout.addWidget(self.median_w_spin)
-        layout.addRow("Median Filter Size (h × w):", mf_layout)
 
         # OK / Cancel
         buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
@@ -166,7 +148,5 @@ class DetectorParamsDialog(QDialog):
         d.max_track_freq_std_hz = self.max_std_spin.value()
         d.merge_gap_frames = self.merge_gap_spin.value()
         d.merge_max_freq_diff_hz = self.merge_freq_diff_spin.value()
-        d.smooth_sigma = self.smooth_sigma_spin.value()
-        d.median_filter_size = (self.median_h_spin.value(), self.median_w_spin.value())
         d.detection_method = "threshold" if self.method_box.currentIndex() == 1 else "peaks"
         super().accept()
