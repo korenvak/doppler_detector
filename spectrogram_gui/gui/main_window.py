@@ -272,6 +272,21 @@ class MainWindow(QMainWindow):
         self.canvas_container.installEventFilter(self)
         right_layout.addWidget(self.canvas_container)
 
+        # Default filter parameters must exist before binding the panel
+        self.filter_params = {
+            "nlms_enabled": False,
+            "lms_enabled": False,
+            "ale_enabled": False,
+            "rls_enabled": False,
+            "wiener_enabled": False,
+            "nlms_mu": 10,
+            "lms_mu": 10,
+            "ale_mu": 10,
+            "ale_delay": 0,
+            "rls_lambda": 99,
+            "wiener_noise": -20,
+        }
+
         self.param_panel = ParamPanel(self)
         self.param_panel.toggle(False)
         self.param_panel.bind_settings()
@@ -281,7 +296,8 @@ class MainWindow(QMainWindow):
         controls_layout.setContentsMargins(0,0,0,0)
         controls_layout.setAlignment(Qt.AlignCenter)
 
-        self.dashboard_btn = QPushButton()
+        self.dashboard_btn = QToolButton()
+        self.dashboard_btn.setObjectName('togglePanel')
         self.dashboard_btn.setCheckable(True)
         self.dashboard_btn.setIcon(qta.icon('fa5s.sliders-h'))
         self.dashboard_btn.setToolTip('Show Detection Dashboard')
@@ -315,19 +331,6 @@ class MainWindow(QMainWindow):
         self.audio_folder = None
         self.current_file = None
         self.csv_path = None
-        self.filter_params = {
-            "nlms_enabled": False,
-            "lms_enabled": False,
-            "ale_enabled": False,
-            "rls_enabled": False,
-            "wiener_enabled": False,
-            "nlms_mu": 10,
-            "lms_mu": 10,
-            "ale_mu": 10,
-            "ale_delay": 0,
-            "rls_lambda": 99,
-            "wiener_noise": -20,
-        }
         self.undo_stack = []
 
         # Undo shortcut

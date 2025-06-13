@@ -61,6 +61,7 @@ class ParamPanel(QFrame):
 
         # ----- Spectrogram Settings -----
         spec_box = QGroupBox("Spectrogram Settings")
+        spec_box.setObjectName("stftSettings")
         s2_layout = QFormLayout(spec_box)
 
         self.nperseg_spin = QSpinBox()
