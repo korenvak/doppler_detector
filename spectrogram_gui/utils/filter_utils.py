@@ -1,7 +1,8 @@
 # File: filter_utils.py
 
 import numpy as np
-from scipy.signal import stft, istft
+from scipy.signal import stft, istft, butter, sosfilt
+from scipy.ndimage import gaussian_filter1d, median_filter
 from typing import Optional, List, Union, Tuple
 
 def apply_lms(x: np.ndarray, mu: float = 0.01, filter_order: int = 32) -> np.ndarray:
@@ -179,3 +180,19 @@ def apply_wiener(x: np.ndarray, noise_db: float = -20, window_size: int = 1024, 
         return x_wiener[:len(x)]
     else:
         return np.pad(x_wiener, (0, len(x) - len(x_wiener)))
+
+
+def apply_gaussian(x: np.ndarray, sigma: float = 1.0) -> np.ndarray:
+    """Apply a simple 1D Gaussian smoothing filter."""
+    return gaussian_filter1d(x.astype(np.float64, copy=False), sigma)
+
+
+def apply_median(x: np.ndarray, size: int = 3) -> np.ndarray:
+    """Apply a 1D median filter."""
+    return median_filter(x.astype(np.float64, copy=False), size=size)
+
+
+def apply_lowpass(x: np.ndarray, cutoff: float, sr: int, order: int = 4) -> np.ndarray:
+    """Apply a Butterworth low-pass filter."""
+    sos = butter(order, cutoff, btype="lowpass", fs=sr, output="sos")
+    return sosfilt(sos, x.astype(np.float64, copy=False))
