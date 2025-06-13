@@ -288,17 +288,18 @@ def calculate_flight_dynamics(flight_df, sensor_lat=None, sensor_lon=None):
     return flight_df
 
 
-def calculate_relative_movement_to_pixel(df_flight, sensor_lat, sensor_lon, start_time, end_time):
-    """Classify movement relative to a pixel's sensor."""
+def analyze_relative_motion(df_flight, sensor_lat, sensor_lon, start_time, end_time):
+    """Analyze motion of an aircraft relative to a sensor between start and end times."""
     df = df_flight.copy()
-    df['parsed_time'] = pd.to_datetime(
-        df.get('Time'), errors='coerce', infer_datetime_format=True
-    )
+    df['parsed_time'] = pd.to_datetime(df.get('Time'), errors='coerce')
+
     start = pd.to_datetime(start_time)
     end = pd.to_datetime(end_time)
     df = df[(df['parsed_time'] >= start) & (df['parsed_time'] <= end)].reset_index(drop=True)
-    if df.empty:
-        return pd.DataFrame(columns=['time','lat','lon','alt','distance_to_sensor','delta_distance','speed','delta_speed','heading','delta_heading','pixel_movement_type'])
+    if len(df) < 2:
+        cols = ['time','lat','lon','alt','distance_to_sensor','delta_distance','speed',
+                'delta_speed','heading','delta_heading','pixel_movement_type']
+        return pd.DataFrame(columns=cols)
 
     df['time_diff'] = df['parsed_time'].diff().dt.total_seconds().fillna(1)
 
@@ -308,18 +309,17 @@ def calculate_relative_movement_to_pixel(df_flight, sensor_lat, sensor_lon, star
     coords = df[coord_cols].values
     from geopy.distance import geodesic
 
-    # distance to sensor
-    sensor_coord = (sensor_lat, sensor_lon)
-    dist_to_sensor = []
+    sensor_alt = df['GPS Alt'].min() if 'GPS Alt' in df.columns else 0
+
+    dist_sensor = []
     for row in coords:
         lat, lon = row[:2]
         alt = row[2] if len(row) > 2 else 0
-        d2d = geodesic((lat, lon), sensor_coord).meters
-        dist_to_sensor.append(np.sqrt(d2d**2 + alt**2))
-    df['distance_to_sensor'] = dist_to_sensor
+        d2d = geodesic((lat, lon), (sensor_lat, sensor_lon)).meters
+        dist_sensor.append(np.sqrt(d2d**2 + (alt - sensor_alt)**2))
+    df['distance_to_sensor'] = dist_sensor
     df['delta_distance'] = df['distance_to_sensor'].diff().fillna(0)
 
-    # path distance and speed
     dist_path = [0]
     for i in range(1, len(coords)):
         lat1, lon1 = coords[i-1][:2]
@@ -333,7 +333,6 @@ def calculate_relative_movement_to_pixel(df_flight, sensor_lat, sensor_lon, star
     df['speed'] = df['dist3d'] / df['time_diff'].replace(0, 1)
     df['delta_speed'] = df['speed'].diff().fillna(0)
 
-    # heading
     headings = [0]
     for i in range(1, len(coords)):
         lat1, lon1 = coords[i-1][:2]
@@ -347,27 +346,31 @@ def calculate_relative_movement_to_pixel(df_flight, sensor_lat, sensor_lon, star
     df['heading'] = headings
     df['delta_heading'] = df['heading'].diff().fillna(0).apply(lambda x: x-360 if x>180 else (x+360 if x<-180 else x))
 
-    def classify(r):
-        if r['delta_distance'] < -1:
-            return 'approaching'
-        if r['delta_distance'] > 1:
-            return 'departing'
-        if r['speed'] < 1:
-            return 'hovering'
-        if r['delta_speed'] > 2:
-            return 'accelerating'
-        if r['delta_speed'] < -2:
-            return 'decelerating'
-        if abs(r['delta_heading']) > 15:
-            return 'turning'
-        return 'cruising'
+    def classify(row):
+        mtypes = []
+        if row['delta_distance'] < -1:
+            mtypes.append('Approaching')
+        elif row['delta_distance'] > 1:
+            mtypes.append('Departing')
+        if row['delta_speed'] > 2:
+            mtypes.append('Accelerating')
+        elif row['delta_speed'] < -2:
+            mtypes.append('Decelerating')
+        if abs(row['delta_heading']) > 15:
+            mtypes.append('Turning')
+        if row['speed'] < 1:
+            mtypes.append('Hovering')
+        if not mtypes:
+            mtypes = ['Cruising']
+        return ','.join(mtypes)
 
     df['pixel_movement_type'] = df.apply(classify, axis=1)
 
     df = df.rename(columns={'parsed_time':'time','GPS Lat':'lat','GPS Lon':'lon','GPS Alt':'alt'})
-    base_cols = ['time','lat','lon','alt','distance_to_sensor','delta_distance','speed','delta_speed','heading','delta_heading','pixel_movement_type']
-    extras = [c for c in ['Sensor Type','Doppler Type','Time'] if c in df.columns]
-    return df[extras + base_cols]
+    keep_cols = ['time','lat','lon','alt','distance_to_sensor','delta_distance','speed',
+                 'delta_speed','heading','delta_heading','pixel_movement_type']
+    extra_cols = [c for c in ['Sensor Type','Doppler Type','Time'] if c in df.columns]
+    return df[extra_cols + keep_cols]
 
 
 def analyze_sensor_detection_by_movement(pixel_dict, flight, pixels=None, sensor_types=None):
@@ -463,10 +466,23 @@ def load_flight_path(flight_number):
     return coords
 
 
-@lru_cache(maxsize=None)
+PIXEL_DATA = {}
+
+def preload_pixel_csvs():
+    """Preload all pixel CSV files for faster access."""
+    summary_dir = os.path.dirname(summary_csv)
+    for px in sorted(df_sum['Pixel'].unique()):
+        fpath = os.path.join(summary_dir, f"points_pixel_{px}.csv")
+        if os.path.exists(fpath):
+            PIXEL_DATA[px] = pd.read_csv(fpath)
+        else:
+            PIXEL_DATA[px] = None
+            print(f"\u26A0\uFE0F Missing pixel CSV for pixel {px}")
+
+preload_pixel_csvs()
+
 def load_pixel_csv(px):
-    fpath = os.path.join(os.path.dirname(summary_csv), f"points_pixel_{px}.csv")
-    return pd.read_csv(fpath) if os.path.exists(fpath) else None
+    return PIXEL_DATA.get(px)
 
 
 @lru_cache(maxsize=None)
@@ -567,7 +583,7 @@ def process_flight_data():
             continue
 
         # Calculate movement relative to this pixel's sensor
-        rel_window = calculate_relative_movement_to_pixel(
+        rel_window = analyze_relative_motion(
             dfx[dfx['Flight number'] == fl],
             ev['Sensor Lat'],
             ev['Sensor Lon'],
@@ -855,6 +871,13 @@ app.layout = dbc.Container([
                         multi=True,
                         value=[],
                         placeholder="Select items to display..."
+                    ),
+                    dbc.Button(
+                        "Clear All",
+                        id="clear-selection",
+                        color="secondary",
+                        size="sm",
+                        className="mt-2"
                     )
                 ], md=3),
 
@@ -983,7 +1006,8 @@ def render_content_from_buttons(btn_map, btn_3d, btn_movement, btn_analytics, bt
                         id='3d-options',
                         options=[
                             {'label': ' Show Sensor Detections', 'value': 'detections'},
-                            {'label': ' Color by Speed', 'value': 'speed'}
+                            {'label': ' Color by Speed', 'value': 'speed'},
+                            {'label': ' Highlight by Movement', 'value': 'movement'}
                         ],
                         value=['detections'],
                         inline=True
@@ -1023,7 +1047,8 @@ def render_content_from_buttons(btn_map, btn_3d, btn_movement, btn_analytics, bt
             dbc.Row([
                 dbc.Col([dcc.Graph(id='movement-coverage', style={'height': '400px'})], md=6),
                 dbc.Col([dcc.Graph(id='detection-by-movement', style={'height': '400px'})], md=6)
-            ])
+            ]),
+            html.Div(id='movement-images', className='mt-3')
         ])
     elif active_tab == "analytics":
         active_states[3] = True
@@ -1115,6 +1140,16 @@ def update_dropdown_options(view_mode):
     else:
         options = [{'label': f'🎯 Pixel {px}', 'value': px} for px in sorted(sensor_positions.keys())]
         return options, []
+
+
+# Clear selection button
+@app.callback(
+    Output('selection-dd', 'value'),
+    Input('clear-selection', 'n_clicks'),
+    prevent_initial_call=True
+)
+def clear_selection(n):
+    return []
 
 
 # Dropdown options for movement analysis
@@ -1297,7 +1332,9 @@ def update_map(flight, view_mode, selection, display_options):
 
                     marker_id = f"marker-{px}-{flight}-{window_idx}-{i}"
                     if 'movement_colors' in (display_options or []):
-                        mv_col = MOVEMENT_COLORS.get(m.get('pixel_movement_type', 'cruising'), col)
+                        mv_raw = m.get('pixel_movement_type', 'cruising')
+                        mv_key = str(mv_raw).split(',')[0].lower()
+                        mv_col = MOVEMENT_COLORS.get(mv_key, col)
                     else:
                         mv_col = col
                     layers.append(dl.CircleMarker(
@@ -1407,7 +1444,9 @@ def update_map(flight, view_mode, selection, display_options):
 
                         marker_id = f"type-marker-{stype}-{px}-{window_idx}-{i}"
                         if 'movement_colors' in (display_options or []):
-                            mv_col = MOVEMENT_COLORS.get(m.get('pixel_movement_type', 'cruising'), col)
+                            mv_raw = m.get('pixel_movement_type', 'cruising')
+                            mv_key = str(mv_raw).split(',')[0].lower()
+                            mv_col = MOVEMENT_COLORS.get(mv_key, col)
                         else:
                             mv_col = col
                         layers.append(dl.CircleMarker(
@@ -1518,6 +1557,16 @@ def update_3d_view(flight, options):
                     colorbar=dict(title="Speed (m/s)")
                 ),
                 marker=dict(size=3)
+            ))
+        elif 'movement' in (options or []):
+            fig.add_trace(go.Scatter3d(
+                x=flight_df['GPS Lon'],
+                y=flight_df['GPS Lat'],
+                z=flight_df['GPS Alt'],
+                mode='lines+markers',
+                name='Flight Path',
+                line=dict(color='gray', width=2),
+                marker=dict(size=4, color=[MOVEMENT_COLORS.get(str(mv).split(',')[0].lower(), '#95a5a6') for mv in flight_df['movement_type']])
             ))
         else:
             fig.add_trace(go.Scatter3d(
@@ -1635,6 +1684,37 @@ def update_movement_analysis(flight, view_mode, selection):
         det_fig.update_layout(height=400)
 
     return cov_fig, det_fig
+
+
+@app.callback(
+    Output('movement-images', 'children'),
+    [Input('movement-flight-select', 'value'),
+     Input('movement-view-mode', 'value'),
+     Input('movement-selection', 'value')]
+)
+def update_movement_images(flight, view_mode, selection):
+    if not flight or not selection or not graphs_dir:
+        return ""
+
+    imgs = []
+    if view_mode == 'individual':
+        for px in selection:
+            file_path = os.path.join(graphs_dir, 'GRAPHS', f'donut_pixel_{px}_flight_{flight}.png')
+            if os.path.exists(file_path):
+                uri = get_image_data(file_path)
+                if uri:
+                    imgs.append(html.Img(src=uri, style={'maxWidth': '100%', 'height': 'auto'}, className='mb-3'))
+    else:
+        for stype in selection:
+            file_path = os.path.join(graphs_dir, 'GRAPHS', f'coverage_type_{stype}_fl_{flight}.png')
+            if os.path.exists(file_path):
+                uri = get_image_data(file_path)
+                if uri:
+                    imgs.append(html.Img(src=uri, style={'maxWidth': '100%', 'height': 'auto'}, className='mb-3'))
+
+    if not imgs:
+        return html.Small("No graphs available", className="text-muted")
+    return imgs
 
 
 # Coverage chart callback
