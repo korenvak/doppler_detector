@@ -3,7 +3,6 @@ from PyQt5.QtWidgets import (
     QSlider, QSpinBox, QFormLayout, QComboBox
 )
 from PyQt5.QtCore import Qt, QPropertyAnimation
-import qtawesome as qta
 
 
 class ParamPanel(QFrame):
@@ -26,10 +25,23 @@ class ParamPanel(QFrame):
         filter_box = QGroupBox("Filter Settings")
         f_layout = QFormLayout(filter_box)
         self.filter_checks = {}
+        self.filter_params = {}
         for name in ["NLMS", "LMS", "ALE", "RLS", "Wiener"]:
             cb = QCheckBox(name)
             self.filter_checks[name] = cb
-            f_layout.addRow(cb)
+            if name == "ALE":
+                row = QHBoxLayout()
+                mu = QSpinBox(); mu.setRange(0, 100); mu.setValue(1)
+                lam = QSpinBox(); lam.setRange(0, 100); lam.setValue(1)
+                delay = QSpinBox(); delay.setRange(1, 20); delay.setValue(1)
+                self.filter_params[name] = (mu, lam, delay)
+                row.addWidget(cb); row.addWidget(mu); row.addWidget(lam); row.addWidget(delay)
+                f_layout.addRow(row)
+            else:
+                val = QSpinBox(); val.setRange(0, 100); val.setValue(1)
+                self.filter_params[name] = (val,)
+                row = QHBoxLayout(); row.addWidget(cb); row.addWidget(val)
+                f_layout.addRow(row)
         layout.addWidget(filter_box)
 
         # ----- Detection Parameters -----

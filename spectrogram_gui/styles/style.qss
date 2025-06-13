@@ -29,20 +29,20 @@ QToolButton {
     padding: 6px 14px;
     color: #F8FAFC;
     background: qlineargradient(x1:0, y1:0, x2:1, y2:0,
-                                stop:0 #7C3AED, stop:1 #06B6D4);
+                                stop:0 #60A5FA, stop:1 #3B82F6);
 }
 
 QPushButton:hover,
 QToolButton:hover {
     background: qlineargradient(x1:0, y1:0, x2:1, y2:0,
-                                stop:0 #8B5CF6, stop:1 #22D3EE);
+                                stop:0 #93C5FD, stop:1 #60A5FA);
     box-shadow: 0 0 8px rgba(59, 130, 246, 0.6);
 }
 
 QPushButton:pressed,
 QToolButton:pressed {
     background: qlineargradient(x1:0, y1:1, x2:1, y2:0,
-                                stop:0 #6D28D9, stop:1 #0891B2);
+                                stop:0 #3B82F6, stop:1 #0EA5E9);
 }
 
 QPushButton:disabled,
@@ -66,7 +66,7 @@ QListWidget::item {
 
 QListWidget::item:selected {
     background: qlineargradient(x1:0, y1:0, x2:1, y2:0,
-                                stop:0 #60A5FA, stop:1 #3B82F6);
+                                stop:0 #93C5FD, stop:1 #3B82F6);
 }
 
 QListWidget::item:hover {
@@ -153,7 +153,7 @@ QMenu::item {
 
 QMenu::item:selected {
     background: qlineargradient(x1:0, y1:0, x2:1, y2:0,
-                                stop:0 #60A5FA, stop:1 #3B82F6);
+                                stop:0 #93C5FD, stop:1 #3B82F6);
 }
 
 /* --- 9. Dialogs ------------------------------------------------ */

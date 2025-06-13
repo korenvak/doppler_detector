@@ -25,6 +25,7 @@ from spectrogram_gui.gui.fft_stats_dialog import FFTDialog
 from spectrogram_gui.gui.gain_dialog import GainDialog
 from spectrogram_gui.gui.detector_params_dialog import DetectorParamsDialog
 from spectrogram_gui.gui.param_panel import ParamPanel
+from spectrogram_gui.gui.spec_settings_dialog import SpectrogramSettingsDialog
 from spectrogram_gui.utils.audio_utils import load_audio_with_filters
 from spectrogram_gui.utils.spectrogram_utils import (
     compute_spectrogram,
@@ -115,13 +116,14 @@ class MainWindow(QMainWindow):
         left_layout.setContentsMargins(12,12,12,12)
         left_layout.setSpacing(8)
 
-        heading = QLabel("Open Files")
-        heading.setObjectName("fileListHeading")
-        left_layout.addWidget(heading)
-
-        self.open_files_btn = QPushButton("Open Files")
+        self.open_files_btn = QToolButton()
+        self.open_files_btn.setText("Open Files")
         self.open_files_btn.setIcon(qta.icon('fa5s.folder-open'))
-        self.open_files_btn.clicked.connect(self.select_multiple_files)
+        self.open_files_btn.setPopupMode(QToolButton.InstantPopup)
+        open_menu = QMenu(self)
+        open_menu.addAction("Open Folder…", self.select_folder)
+        open_menu.addAction("Open File…", self.select_multiple_files)
+        self.open_files_btn.setMenu(open_menu)
         left_layout.addWidget(self.open_files_btn)
 
         self.file_list = FileListWidget()
@@ -130,7 +132,7 @@ class MainWindow(QMainWindow):
         self.file_list.setContextMenuPolicy(Qt.CustomContextMenu)
         self.file_list.customContextMenuRequested.connect(self.on_file_list_context_menu)
         self.file_list.setIconSize(QSize(14, 14))
-        left_layout.addWidget(self.file_list)
+        left_layout.addWidget(self.file_list, 1)
 
         shadow = QGraphicsDropShadowEffect()
         shadow.setBlurRadius(20)
@@ -152,8 +154,12 @@ class MainWindow(QMainWindow):
 
         self.settings_btn = QPushButton("Settings")
         self.settings_btn.setIcon(qta.icon('fa5s.cog'))
-        self.settings_btn.setCheckable(True)
-        self.settings_btn.toggled.connect(self.toggle_param_panel)
+        self.settings_btn.clicked.connect(self.open_spectrogram_settings)
+
+        self.params_btn = QPushButton("Parameters")
+        self.params_btn.setIcon(qta.icon('fa5s.sliders-h'))
+        self.params_btn.setCheckable(True)
+        self.params_btn.toggled.connect(self.toggle_param_panel)
 
         # Auto-Detect
         self.auto_detect_btn = QPushButton("Auto-Detect")
@@ -202,6 +208,7 @@ class MainWindow(QMainWindow):
         for w in [
             self.set_csv_btn,
             self.settings_btn,
+            self.params_btn,
             self.auto_detect_btn,
         ]:
             top_bar.addWidget(w)
@@ -295,6 +302,8 @@ class MainWindow(QMainWindow):
         QShortcut(QKeySequence("Ctrl+Z"), self).activated.connect(self.perform_undo)
         QShortcut(QKeySequence(Qt.Key_Left), self).activated.connect(self.load_prev_file)
         QShortcut(QKeySequence(Qt.Key_Right), self).activated.connect(self.load_next_file)
+        QShortcut(QKeySequence("Ctrl+S"), self).activated.connect(self.open_spectrogram_settings)
+        QShortcut(QKeySequence("Ctrl+Return"), self).activated.connect(self.run_detection)
 
     def add_undo_action(self, action):
         self.undo_stack.append(action)
@@ -630,10 +639,18 @@ class MainWindow(QMainWindow):
         dlg = GainDialog(self)
         dlg.exec_()
 
+    def open_spectrogram_settings(self):
+        dlg = SpectrogramSettingsDialog(self, params=self.spectrogram_params)
+        if dlg.exec_() == dlg.Accepted:
+            params = dlg.get_params()
+            self.spectrogram_params.update(params)
+            if self.current_file:
+                self.load_file_from_path(self.current_file, maintain_view=True)
+
     def toggle_param_panel(self, visible):
         self.param_panel.toggle(visible)
-        icon = qta.icon('fa5s.chevron-down') if visible else qta.icon('fa5s.cog')
-        self.settings_btn.setIcon(icon)
+        icon = qta.icon('fa5s.chevron-down') if visible else qta.icon('fa5s.sliders-h')
+        self.params_btn.setIcon(icon)
 
     def open_detector_params(self):
         dlg = DetectorParamsDialog(self, detector=self.detector)
