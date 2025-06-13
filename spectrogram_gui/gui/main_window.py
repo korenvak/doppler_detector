@@ -11,7 +11,7 @@ from PyQt5.QtWidgets import (
     QToolButton, QAction, QGraphicsDropShadowEffect, QShortcut
 )
 from PyQt5.QtGui import QKeySequence
-from PyQt5.QtCore import Qt, pyqtSignal
+from PyQt5.QtCore import Qt, pyqtSignal, QSize
 
 import qtawesome as qta
 
@@ -23,7 +23,6 @@ from spectrogram_gui.gui.filter_dialog import FilterDialog
 from spectrogram_gui.gui.filters import CombinedFilterDialog
 from spectrogram_gui.gui.fft_stats_dialog import FFTDialog
 from spectrogram_gui.gui.gain_dialog import GainDialog
-from spectrogram_gui.gui.params_dialog import ParamsDialog
 from spectrogram_gui.gui.detector_params_dialog import DetectorParamsDialog
 from spectrogram_gui.gui.param_panel import ParamPanel
 from spectrogram_gui.utils.audio_utils import load_audio_with_filters
@@ -120,11 +119,17 @@ class MainWindow(QMainWindow):
         heading.setObjectName("fileListHeading")
         left_layout.addWidget(heading)
 
+        self.open_files_btn = QPushButton("Open Files")
+        self.open_files_btn.setIcon(qta.icon('fa5s.folder-open'))
+        self.open_files_btn.clicked.connect(self.select_multiple_files)
+        left_layout.addWidget(self.open_files_btn)
+
         self.file_list = FileListWidget()
         self.file_list.itemClicked.connect(self.load_file)
         self.file_list.fileDeleteRequested.connect(self.remove_selected_file)
         self.file_list.setContextMenuPolicy(Qt.CustomContextMenu)
         self.file_list.customContextMenuRequested.connect(self.on_file_list_context_menu)
+        self.file_list.setIconSize(QSize(14, 14))
         left_layout.addWidget(self.file_list)
 
         shadow = QGraphicsDropShadowEffect()
@@ -141,33 +146,18 @@ class MainWindow(QMainWindow):
         right_layout.setSpacing(8)
 
         # Toolbar buttons
-        self.open_folder_btn = QPushButton("Open Folder")
-        self.open_folder_btn.setIcon(qta.icon('fa5s.folder'))
-        self.open_folder_btn.clicked.connect(self.select_folder)
-
-        self.open_file_btn = QPushButton("Open File")
-        self.open_file_btn.setIcon(qta.icon('fa5s.file'))
-        self.open_file_btn.clicked.connect(self.select_multiple_files)
-
-
-        self.change_cmap_btn = QPushButton("Colormap")
-        self.change_cmap_btn.setIcon(qta.icon('fa5s.palette'))
-        cmap_menu = QMenu(self)
-        for cmap in ["gray","viridis","magma","inferno","plasma"]:
-            act = cmap_menu.addAction(cmap.capitalize())
-            act.triggered.connect(lambda _, n=cmap: self.on_change_cmap(n))
-        self.change_cmap_btn.setMenu(cmap_menu)
-
         self.set_csv_btn = QPushButton("Set CSV")
         self.set_csv_btn.setIcon(qta.icon('fa5s.save'))
         self.set_csv_btn.clicked.connect(self.set_csv_file)
 
         self.settings_btn = QPushButton("Settings")
         self.settings_btn.setIcon(qta.icon('fa5s.cog'))
-        self.settings_btn.clicked.connect(self.open_settings_dialog)
+        self.settings_btn.setCheckable(True)
+        self.settings_btn.toggled.connect(self.toggle_param_panel)
 
         # Auto-Detect
         self.auto_detect_btn = QPushButton("Auto-Detect")
+        self.auto_detect_btn.setIcon(qta.icon('fa5s.bolt'))
         self.auto_detect_btn.setToolTip("Open parameters and run auto-detection")
         self.auto_detect_btn.clicked.connect(self.run_detection)
 
@@ -204,19 +194,12 @@ class MainWindow(QMainWindow):
         self.undo_btn.setEnabled(False)
         self.undo_btn.clicked.connect(self.perform_undo)
 
-        self.params_toggle_btn = QToolButton()
-        self.params_toggle_btn.setCheckable(True)
-        self.params_toggle_btn.setIcon(qta.icon('fa5s.chevron-up'))
-        self.params_toggle_btn.toggled.connect(self.toggle_param_panel)
 
         # Assemble toolbar
         top_bar = QHBoxLayout()
         top_bar.setSpacing(8)
         top_bar.setContentsMargins(0,0,0,0)
         for w in [
-            self.open_folder_btn,
-            self.open_file_btn,
-            self.change_cmap_btn,
             self.set_csv_btn,
             self.settings_btn,
             self.auto_detect_btn,
@@ -234,8 +217,7 @@ class MainWindow(QMainWindow):
             self.filter_btn,
             self.fft_btn,
             self.gain_btn,
-            self.undo_btn,
-            self.params_toggle_btn
+            self.undo_btn
         ]:
             top_bar.addWidget(w)
 
@@ -346,6 +328,7 @@ class MainWindow(QMainWindow):
             use_filtered = (resp == QMessageBox.Yes)
 
         try:
+            start_time = datetime.now()
             if use_filtered:
                 # grab filtered waveform & sample rate
                 y, sr = self.audio_player.get_waveform_copy(return_sr=True)
@@ -386,6 +369,8 @@ class MainWindow(QMainWindow):
             self.canvas.plot_auto_tracks(processed)
             self.detection_manager.record(self.canvas.auto_tracks_items.copy())
             self.add_undo_action(("detection", None))
+            duration = (datetime.now() - start_time).total_seconds()
+            self.param_panel.update_stats(len(processed), self.detector.detection_method, duration)
 
         except Exception as e:
             QMessageBox.warning(self, "Auto-Detect Error", str(e))
@@ -507,12 +492,6 @@ class MainWindow(QMainWindow):
                 self.audio_player.play()
 
 
-    def open_settings_dialog(self):
-        dlg = ParamsDialog(self, current_params=self.spectrogram_params)
-        if dlg.exec_():
-            self.spectrogram_params = dlg.get_params()
-            if self.current_file:
-                self.load_file_from_path(self.current_file, maintain_view=True)
 
 
     def on_change_cmap(self, cmap_name):
@@ -653,8 +632,8 @@ class MainWindow(QMainWindow):
 
     def toggle_param_panel(self, visible):
         self.param_panel.toggle(visible)
-        icon = qta.icon('fa5s.chevron-down') if visible else qta.icon('fa5s.chevron-up')
-        self.params_toggle_btn.setIcon(icon)
+        icon = qta.icon('fa5s.chevron-down') if visible else qta.icon('fa5s.cog')
+        self.settings_btn.setIcon(icon)
 
     def open_detector_params(self):
         dlg = DetectorParamsDialog(self, detector=self.detector)

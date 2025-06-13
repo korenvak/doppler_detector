@@ -1,12 +1,14 @@
 from PyQt5.QtWidgets import (
-    QFrame, QVBoxLayout, QLabel, QPushButton,
-    QGroupBox, QHBoxLayout, QSlider
+    QFrame, QVBoxLayout, QLabel, QGroupBox, QCheckBox, QHBoxLayout,
+    QSlider, QSpinBox, QFormLayout, QComboBox
 )
 from PyQt5.QtCore import Qt, QPropertyAnimation
 import qtawesome as qta
 
+
 class ParamPanel(QFrame):
-    """Collapsible side panel for quick access to detection parameters."""
+    """Collapsible bottom drawer showing filters, detection parameters and stats."""
+
     def __init__(self, main_window):
         super().__init__()
         self.main = main_window
@@ -14,39 +16,80 @@ class ParamPanel(QFrame):
         self._expanded = False
         self.setMaximumHeight(0)
         self.animation = QPropertyAnimation(self, b"maximumHeight")
-        self.animation.setDuration(200)
+        self.animation.setDuration(250)
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(12, 12, 12, 12)
-        layout.setSpacing(8)
+        layout.setSpacing(10)
 
-        title = QLabel("Detection Settings")
-        layout.addWidget(title)
-
-        # Filter Settings
+        # ----- Filter Settings -----
         filter_box = QGroupBox("Filter Settings")
-        filter_layout = QHBoxLayout(filter_box)
-        self.filter_slider = QSlider(Qt.Horizontal)
-        filter_layout.addWidget(self.filter_slider)
+        f_layout = QFormLayout(filter_box)
+        self.filter_checks = {}
+        for name in ["NLMS", "LMS", "ALE", "RLS", "Wiener"]:
+            cb = QCheckBox(name)
+            self.filter_checks[name] = cb
+            f_layout.addRow(cb)
         layout.addWidget(filter_box)
 
-        # Detection Parameters
+        # ----- Detection Parameters -----
         det_box = QGroupBox("Detection Parameters")
-        det_layout = QHBoxLayout(det_box)
-        self.threshold_slider = QSlider(Qt.Horizontal)
-        det_layout.addWidget(self.threshold_slider)
+        d_layout = QFormLayout(det_box)
+        self.threshold_slider, self.threshold_spin = self._add_slider_spin(d_layout, "Power Threshold", 0, 100)
+        self.prom_slider, self.prom_spin = self._add_slider_spin(d_layout, "Peak Prominence", 0, 50)
+        self.jump_slider, self.jump_spin = self._add_slider_spin(d_layout, "Max Hz Jump", 0, 400)
+        self.len_slider, self.len_spin = self._add_slider_spin(d_layout, "Min Track Length", 0, 10)
+        self.std_slider, self.std_spin = self._add_slider_spin(d_layout, "Track Freq Std Max", 0, 50)
         layout.addWidget(det_box)
 
-        btn = QPushButton("Open Full Dialog")
-        btn.setIcon(qta.icon('fa5s.sliders-h'))
-        btn.clicked.connect(self.main.open_detector_params)
-        layout.addWidget(btn)
+        # ----- Spectrogram View -----
+        spec_box = QGroupBox("Spectrogram View")
+        s_layout = QFormLayout(spec_box)
+        self.range_slider, self.range_spin = self._add_slider_spin(s_layout, "Dynamic Range (dB)", 40, 120)
+        self.fft_combo = QComboBox()
+        self.fft_combo.addItems(["1024", "2048", "4096", "8192"])
+        s_layout.addRow("FFT Window", self.fft_combo)
+        self.cmap_combo = QComboBox()
+        self.cmap_combo.addItems(["gray", "viridis", "magma", "inferno", "plasma"])
+        self.cmap_combo.currentTextChanged.connect(self.main.on_change_cmap)
+        s_layout.addRow("Colormap", self.cmap_combo)
+        self.time_cb = QCheckBox("Time scale")
+        self.freq_cb = QCheckBox("Frequency scale")
+        self.grid_cb = QCheckBox("Grid lines")
+        s_layout.addRow(self.time_cb)
+        s_layout.addRow(self.freq_cb)
+        s_layout.addRow(self.grid_cb)
+        layout.addWidget(spec_box)
+
+        # ----- Stats -----
+        stats_box = QGroupBox("Detection Info")
+        stats_layout = QVBoxLayout(stats_box)
+        self.stats_label = QLabel("Tracks detected: 0")
+        stats_layout.addWidget(self.stats_label)
+        layout.addWidget(stats_box)
+
+    def _add_slider_spin(self, form, label, minv, maxv):
+        slider = QSlider(Qt.Horizontal)
+        spin = QSpinBox()
+        slider.setRange(minv, maxv)
+        spin.setRange(minv, maxv)
+        slider.valueChanged.connect(spin.setValue)
+        spin.valueChanged.connect(slider.setValue)
+        row = QHBoxLayout()
+        row.addWidget(slider)
+        row.addWidget(spin)
+        form.addRow(label, row)
+        return slider, spin
 
     def toggle(self, show: bool):
         self._expanded = show
         start = self.maximumHeight()
-        end = 200 if show else 0
+        end = 300 if show else 0
         self.animation.stop()
         self.animation.setStartValue(start)
         self.animation.setEndValue(end)
         self.animation.start()
+
+    def update_stats(self, tracks: int, method: str, duration: float):
+        self.stats_label.setText(
+            f"Tracks detected: {tracks} | Method: {method} | {duration:.1f}s")
