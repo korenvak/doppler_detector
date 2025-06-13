@@ -39,12 +39,15 @@ class ParamPanel(QFrame):
         spec_box = QGroupBox("Spectrogram Settings")
         spec_box.setObjectName("stftSettings")
         s2_layout = QFormLayout(spec_box)
+        s2_layout.setContentsMargins(8, 8, 8, 8)
+        s2_layout.setSpacing(8)
 
         self.nperseg_slider = QSlider(Qt.Horizontal)
         self.nperseg_slider.setRange(1, 64)  # 1=>256
         self.nperseg_value = QLabel()
         self.nperseg_value.setObjectName("sliderLabel")
         nperseg_row = QHBoxLayout()
+        nperseg_row.setSpacing(6)
         nperseg_row.addWidget(self.nperseg_slider, 1)
         nperseg_row.addWidget(self.nperseg_value)
         s2_layout.addRow("Window Size", nperseg_row)
@@ -54,6 +57,7 @@ class ParamPanel(QFrame):
         self.overlap_value = QLabel()
         self.overlap_value.setObjectName("sliderLabel")
         overlap_row = QHBoxLayout()
+        overlap_row.setSpacing(6)
         overlap_row.addWidget(self.overlap_slider, 1)
         overlap_row.addWidget(self.overlap_value)
         s2_layout.addRow("Overlap", overlap_row)

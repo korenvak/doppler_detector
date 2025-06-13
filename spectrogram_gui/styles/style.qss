@@ -84,6 +84,7 @@ QLabel {
 QLabel#fileListHeading {
     font-size: 16px;
     font-weight: 600;
+    margin-top: -2px; /* align with top buttons */
     margin-bottom: 4px;
 }
 
@@ -278,6 +279,7 @@ QGroupBox#stftSettings {
     border: 1px solid #334155;
     border-radius: 8px;
     margin-top: 12px;
+    padding: 8px;
 }
 
 QGroupBox#stftSettings::title {
