@@ -370,8 +370,9 @@ def calculate_relative_movement_to_pixel(df_flight, sensor_lat, sensor_lon, star
     return df[extras + base_cols]
 
 
-def analyze_sensor_detection_by_movement(pixel_dict, flight):
-    """Analyze movement types relative to pixel detections for a flight."""
+def analyze_sensor_detection_by_movement(pixel_dict, flight, pixels=None, sensor_types=None):
+    """Analyze movement types relative to pixel detections for a flight.
+    Optionally filter by specific pixels or sensor types."""
     detection_analysis = {
         'movement_type': [],
         'total_points': [],
@@ -386,7 +387,13 @@ def analyze_sensor_detection_by_movement(pixel_dict, flight):
     for (fl, px), windows in pixel_dict.items():
         if fl != flight:
             continue
+        if pixels is not None and px not in pixels:
+            continue
         for coords, meta, _ in windows:
+            if sensor_types is not None and meta:
+                sensor_type = meta[0].get('Sensor Type')
+                if sensor_type not in sensor_types:
+                    continue
             for m in meta:
                 mv = m.get('pixel_movement_type', 'unknown')
                 dist = m.get('distance_to_sensor', 0)
@@ -862,7 +869,8 @@ app.layout = dbc.Container([
                         options=[
                             {'label': ' Flight Path', 'value': 'flight_path'},
                             {'label': ' Fiber Cable', 'value': 'fiber'},
-                            {'label': ' Cluster Markers', 'value': 'cluster'}
+                            {'label': ' Cluster Markers', 'value': 'cluster'},
+                            {'label': ' Movement Colors', 'value': 'movement_colors'}
                         ],
                         value=['flight_path', 'fiber'],
                         className="small"
@@ -954,7 +962,7 @@ def render_content_from_buttons(btn_map, btn_3d, btn_movement, btn_analytics, bt
                 ],
                 style={'width': '100%', 'height': '70vh', 'border-radius': '8px', 'border': '1px solid #dee2e6'}
             ),
-            html.Div(movement_legend, className="mt-2")
+            html.Div(id='movement-legend', className="mt-2")
         ])
 
     elif active_tab == "3d":
@@ -988,32 +996,35 @@ def render_content_from_buttons(btn_map, btn_3d, btn_movement, btn_analytics, bt
     elif active_tab == "movement":
         active_states[2] = True
         colors[2] = 'primary'
+
         content = html.Div([
             dbc.Row([
                 dbc.Col([
-                    html.Label("Select Flight for Movement Analysis:", className="fw-bold"),
+                    html.Label("Select Flight:", className="fw-bold"),
                     dcc.Dropdown(
                         id='movement-flight-select',
                         options=[{'label': f'Flight {f}', 'value': f} for f in flight_numbers],
                         value=flight_numbers[0] if flight_numbers else None
                     )
-                ], md=6)
+                ], md=4),
+                dbc.Col([
+                    html.Label("View Mode:", className="fw-bold"),
+                    dcc.Dropdown(
+                        id='movement-view-mode',
+                        options=[{'label': 'By Pixel', 'value': 'individual'}, {'label': 'By Type', 'value': 'clustered'}],
+                        value='individual'
+                    )
+                ], md=3),
+                dbc.Col([
+                    html.Label("Select Item:", className="fw-bold"),
+                    dcc.Dropdown(id='movement-selection', multi=True)
+                ], md=5)
             ], className="mb-3"),
             dbc.Row([
-                dbc.Col([
-                    dcc.Graph(id='movement-timeline', style={'height': '400px'})
-                ], md=12)
-            ], className="mb-3"),
-            dbc.Row([
-                dbc.Col([
-                    dcc.Graph(id='detection-by-movement', style={'height': '400px'})
-                ], md=6),
-                dbc.Col([
-                    dcc.Graph(id='movement-statistics', style={'height': '400px'})
-                ], md=6)
+                dbc.Col([dcc.Graph(id='movement-coverage', style={'height': '400px'})], md=6),
+                dbc.Col([dcc.Graph(id='detection-by-movement', style={'height': '400px'})], md=6)
             ])
         ])
-
     elif active_tab == "analytics":
         active_states[3] = True
         colors[3] = 'primary'
@@ -1104,6 +1115,21 @@ def update_dropdown_options(view_mode):
     else:
         options = [{'label': f'🎯 Pixel {px}', 'value': px} for px in sorted(sensor_positions.keys())]
         return options, []
+
+
+# Dropdown options for movement analysis
+@app.callback([
+    Output('movement-selection', 'options'),
+    Output('movement-selection', 'value')],
+    Input('movement-view-mode', 'value')
+)
+def update_movement_dropdown(view_mode):
+    if view_mode == 'clustered':
+        opts = [{'label': stype, 'value': stype} for stype in sorted(df_sum['Sensor Type'].unique())]
+        return opts, []
+    else:
+        opts = [{'label': f'Pixel {px}', 'value': px} for px in sorted(sensor_positions.keys())]
+        return opts, []
 
 
 # Update flight info
@@ -1270,7 +1296,10 @@ def update_map(flight, view_mode, selection, display_options):
                         )
 
                     marker_id = f"marker-{px}-{flight}-{window_idx}-{i}"
-                    mv_col = MOVEMENT_COLORS.get(m.get('pixel_movement_type', 'cruising'), col)
+                    if 'movement_colors' in (display_options or []):
+                        mv_col = MOVEMENT_COLORS.get(m.get('pixel_movement_type', 'cruising'), col)
+                    else:
+                        mv_col = col
                     layers.append(dl.CircleMarker(
                         id=marker_id,
                         center=[lat, lon],
@@ -1377,7 +1406,10 @@ def update_map(flight, view_mode, selection, display_options):
                         ])
 
                         marker_id = f"type-marker-{stype}-{px}-{window_idx}-{i}"
-                        mv_col = MOVEMENT_COLORS.get(m.get('pixel_movement_type', 'cruising'), col)
+                        if 'movement_colors' in (display_options or []):
+                            mv_col = MOVEMENT_COLORS.get(m.get('pixel_movement_type', 'cruising'), col)
+                        else:
+                            mv_col = col
                         layers.append(dl.CircleMarker(
                             id=marker_id,
                             center=[lat, lon],
@@ -1432,6 +1464,16 @@ def update_map(flight, view_mode, selection, display_options):
 
     return layers
 
+
+# Toggle movement legend based on display options
+@app.callback(
+    Output('movement-legend', 'children'),
+    Input('display-options', 'value')
+)
+def update_movement_legend(display_options):
+    if display_options and 'movement_colors' in display_options:
+        return movement_legend
+    return ""
 
 # NEW CALLBACKS FOR 3D AND ANIMATION
 
@@ -1536,125 +1578,63 @@ def update_3d_view(flight, options):
 
 
 @app.callback(
-    [Output('movement-timeline', 'figure'),
-     Output('detection-by-movement', 'figure'),
-     Output('movement-statistics', 'figure')],
-    Input('movement-flight-select', 'value')
+    [Output('movement-coverage', 'figure'),
+     Output('detection-by-movement', 'figure')],
+    [Input('movement-flight-select', 'value'),
+     Input('movement-view-mode', 'value'),
+     Input('movement-selection', 'value')]
 )
-def update_movement_analysis(flight):
-    if not flight:
-        empty_fig = go.Figure()
-        empty_fig.add_annotation(text="Select a flight for movement analysis", xref="paper", yref="paper", x=0.5, y=0.5,
-                                 font=dict(size=20))
-        empty_fig.update_layout(height=400)
-        return empty_fig, empty_fig, empty_fig
+def update_movement_analysis(flight, view_mode, selection):
+    if not flight or not selection:
+        fig = go.Figure()
+        fig.add_annotation(text="Select items for analysis", xref="paper", yref="paper", x=0.5, y=0.5)
+        fig.update_layout(height=400)
+        return fig, fig
 
-    try:
-        # Load and analyze flight data
-        flight_path = os.path.join(trace_dir, f"Flight_{flight}_logs.csv")
-        flight_df = pd.read_csv(flight_path)
+    flight_col = f"Flight_{flight}"
 
-        # Add flight number
-        flight_df['Flight number'] = flight
+    coverage_vals = []
+    labels = []
+    colors_list = []
 
-        flight_df = calculate_flight_dynamics(flight_df)
+    if view_mode == 'individual' and coverage_per_pixel is not None:
+        for px in selection:
+            if px in coverage_per_pixel.index and flight_col in coverage_per_pixel.columns:
+                cov = coverage_per_pixel.loc[px, flight_col]
+                if not pd.isna(cov):
+                    coverage_vals.append(cov)
+                    labels.append(f'Pixel {px}')
+                    colors_list.append(pixel_colors.get(px, '#0066CC'))
+        detection_df = analyze_sensor_detection_by_movement(dict_pixel, flight, pixels=set(selection))
+    elif view_mode == 'clustered' and coverage_per_type is not None:
+        for stype in selection:
+            if stype in coverage_per_type.index and flight_col in coverage_per_type.columns:
+                cov = coverage_per_type.loc[stype, flight_col]
+                if not pd.isna(cov):
+                    coverage_vals.append(cov)
+                    labels.append(stype)
+                    colors_list.append(type_colors.get(stype, '#0066CC'))
+        detection_df = analyze_sensor_detection_by_movement(dict_pixel, flight, sensor_types=set(selection))
+    else:
+        detection_df = pd.DataFrame()
 
-        # Movement timeline
-        timeline_fig = make_subplots(
-            rows=3, cols=1,
-            subplot_titles=['Speed Profile', 'Acceleration', 'Turning Rate'],
-            shared_xaxes=True,
-            vertical_spacing=0.1
-        )
+    cov_fig = go.Figure()
+    if coverage_vals:
+        cov_fig.add_trace(go.Bar(x=labels, y=coverage_vals, marker_color=colors_list))
+        cov_fig.update_layout(title="Coverage", yaxis_title="Coverage (%)", showlegend=False, height=400)
+    else:
+        cov_fig.add_annotation(text="Coverage data not available", xref="paper", yref="paper", x=0.5, y=0.5)
+        cov_fig.update_layout(height=400)
 
-        if 'Time' in flight_df.columns:
-            x_axis = pd.to_datetime(flight_df['Time'], errors='coerce')
-            if x_axis.isna().all():
-                x_axis = pd.date_range(start='2020-01-01', periods=len(flight_df), freq='S')
-        else:
-            x_axis = pd.date_range(start='2020-01-01', periods=len(flight_df), freq='S')
+    det_fig = go.Figure()
+    if not detection_df.empty:
+        det_fig.add_trace(go.Bar(x=detection_df['movement_type'], y=detection_df['detected_points'], marker_color=[MOVEMENT_COLORS.get(mv, '#888') for mv in detection_df['movement_type']]))
+        det_fig.update_layout(title="Detections by Movement", xaxis_title="Movement Type", yaxis_title="Count", showlegend=False, height=400)
+    else:
+        det_fig.add_annotation(text="No detection data", xref="paper", yref="paper", x=0.5, y=0.5)
+        det_fig.update_layout(height=400)
 
-        # Speed
-        if 'speed_smooth' in flight_df.columns:
-            timeline_fig.add_trace(
-                go.Scatter(x=x_axis, y=flight_df['speed_smooth'], name='Speed', line=dict(color='blue')),
-                row=1, col=1
-            )
-
-        # Acceleration
-        if 'acceleration' in flight_df.columns:
-            timeline_fig.add_trace(
-                go.Scatter(x=x_axis, y=flight_df['acceleration'], name='Acceleration', line=dict(color='green')),
-                row=2, col=1
-            )
-
-        # Turning rate
-        if 'heading_change' in flight_df.columns:
-            timeline_fig.add_trace(
-                go.Scatter(x=x_axis, y=flight_df['heading_change'], name='Heading Change', line=dict(color='orange')),
-                row=3, col=1
-            )
-
-        timeline_fig.update_yaxes(title_text="m/s", row=1, col=1)
-        timeline_fig.update_yaxes(title_text="m/s²", row=2, col=1)
-        timeline_fig.update_yaxes(title_text="degrees", row=3, col=1)
-        timeline_fig.update_layout(height=600, showlegend=False, title=f"Flight Dynamics - Flight {flight}")
-
-        # Detection by movement type
-        detection_analysis = analyze_sensor_detection_by_movement(dict_pixel, flight)
-
-        if not detection_analysis.empty:
-            detection_fig = go.Figure(data=[
-                go.Bar(
-                    x=detection_analysis['movement_type'],
-                    y=detection_analysis['detection_rate'],
-                    text=[f"{rate:.1f}%" for rate in detection_analysis['detection_rate']],
-                    textposition='auto',
-                    marker_color=['blue', 'green', 'red', 'orange', 'purple'][:len(detection_analysis)]
-                )
-            ])
-            detection_fig.update_layout(
-                title="Detection Rate by Movement Type",
-                xaxis_title="Movement Type",
-                yaxis_title="Detection Rate (%)",
-                showlegend=False,
-                height=400
-            )
-        else:
-            detection_fig = go.Figure()
-            detection_fig.add_annotation(text="No detection data available", xref="paper", yref="paper", x=0.5, y=0.5)
-            detection_fig.update_layout(height=400)
-
-        # Movement statistics
-        if 'movement_type' in flight_df.columns:
-            movement_counts = flight_df['movement_type'].value_counts()
-
-            stats_fig = go.Figure(data=[
-                go.Pie(
-                    labels=movement_counts.index,
-                    values=movement_counts.values,
-                    hole=0.3
-                )
-            ])
-            stats_fig.update_layout(
-                title="Movement Type Distribution",
-                showlegend=True,
-                height=400
-            )
-        else:
-            stats_fig = go.Figure()
-            stats_fig.add_annotation(text="Movement analysis not available", xref="paper", yref="paper", x=0.5, y=0.5)
-            stats_fig.update_layout(height=400)
-
-        return timeline_fig, detection_fig, stats_fig
-
-    except Exception as e:
-        print(f"Error in movement analysis: {e}")
-        empty_fig = go.Figure()
-        empty_fig.add_annotation(text=f"Error: {str(e)}", xref="paper", yref="paper", x=0.5, y=0.5,
-                                 font=dict(color="red"))
-        empty_fig.update_layout(height=400)
-        return empty_fig, empty_fig, empty_fig
+    return cov_fig, det_fig
 
 
 # Coverage chart callback
