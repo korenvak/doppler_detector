@@ -271,14 +271,11 @@ def calculate_flight_dynamics(flight_df, sensor_lat=None, sensor_lon=None):
     # Define thresholds
     ACCEL_THRESHOLD = 2.0  # m/s²
     DECEL_THRESHOLD = -2.0  # m/s²
-    TURN_THRESHOLD = 15.0  # degrees per second
     SPEED_THRESHOLD = 5.0  # m/s
 
     # Classify movements
     flight_df.loc[flight_df['acceleration'] > ACCEL_THRESHOLD, 'movement_type'] = 'accelerating'
     flight_df.loc[flight_df['acceleration'] < DECEL_THRESHOLD, 'movement_type'] = 'decelerating'
-    flight_df.loc[abs(
-        flight_df['heading_change'] / flight_df['time_diff'].fillna(1)) > TURN_THRESHOLD, 'movement_type'] = 'turning'
     flight_df.loc[flight_df['speed_smooth'] < SPEED_THRESHOLD, 'movement_type'] = 'hovering'
 
     # Add Flight number if not present
@@ -343,9 +340,7 @@ def calculate_relative_movement_to_pixel(df_flight, sensor_lat, sensor_lon, star
 
     movement = []
     for i in range(len(df)):
-        if abs(delta_heading[i]) > 15:
-            movement.append('turning')
-        elif delta_dist[i] < -1:
+        if delta_dist[i] < -1:
             movement.append('approaching')
         elif delta_dist[i] > 1:
             movement.append('departing')
@@ -540,7 +535,7 @@ def load_graph_image(pixel_id, flight_num, graphs_dir):
     """Return base64 image for a pixel's donut graph if available."""
     if not graphs_dir:
         return None
-    fname = f"donut_pixel_{pixel_id}_flight_{flight_num}.png"
+    fname = f"donut_px_{pixel_id}_fl_{flight_num}.png"
     paths = [
         os.path.join(graphs_dir, fname),
         os.path.join(graphs_dir, 'GRAPHS', fname)
@@ -675,7 +670,6 @@ MOVEMENT_COLORS = {
     'hovering': '#9b59b6',    # purple
     'accelerating': '#f39c12',  # orange
     'decelerating': '#3498db',  # blue
-    'turning': '#f1c40f',      # yellow
     'cruising': '#95a5a6'      # gray
 }
 
@@ -1041,8 +1035,7 @@ def render_content_from_buttons(btn_map, btn_3d, btn_movement, btn_analytics, bt
                         id='3d-options',
                         options=[
                             {'label': ' Show Sensor Detections', 'value': 'detections'},
-                            {'label': ' Color by Speed', 'value': 'speed'},
-                            {'label': ' Highlight by Movement', 'value': 'movement'}
+                            {'label': ' Color by Speed', 'value': 'speed'}
                         ],
                         value=['detections'],
                         inline=True
@@ -1579,22 +1572,20 @@ def update_3d_view(flight, options):
         fig = go.Figure()
 
         if 'speed' in (options or []) and 'speed_smooth' in flight_df.columns:
-            marker = dict(size=5, color=flight_df['speed_smooth'], colorscale='Viridis', colorbar=dict(title='Speed (m/s)'))
-            line = dict(width=2, color='gray')
-        elif 'movement' in (options or []):
-            marker = dict(size=5, color=[MOVEMENT_COLORS.get(str(mv).split(',')[0].lower(), '#95a5a6') for mv in flight_df['movement_type']])
-            line = dict(width=2, color='gray')
+            marker = dict(size=3, color=flight_df['speed_smooth'], colorscale='Viridis', colorbar=dict(title='Speed (m/s)'))
+            line = dict(color='gray', width=2)
         else:
-            marker = dict(size=5, color='cyan')
-            line = dict(width=2, color='cyan')
+            marker = dict(size=3, color='cyan')
+            line = dict(color='cyan', width=2)
 
-        fig.add_trace(go.Scattermapbox(
-            lat=flight_df['GPS Lat'],
-            lon=flight_df['GPS Lon'],
+        fig.add_trace(go.Scatter3d(
+            x=flight_df['GPS Lon'],
+            y=flight_df['GPS Lat'],
+            z=flight_df['GPS Alt'],
             mode='lines+markers',
-            marker=marker,
+            name='Flight Path',
             line=line,
-            name='Flight Path'
+            marker=marker
         ))
 
         if 'detections' in (options or []):
@@ -1602,27 +1593,24 @@ def update_3d_view(flight, options):
             if not flight_events.empty:
                 for stype in flight_events['Sensor Type'].unique():
                     type_events = flight_events[flight_events['Sensor Type'] == stype]
-                    fig.add_trace(go.Scattermapbox(
-                        lat=type_events['Sensor Lat'],
-                        lon=type_events['Sensor Lon'],
+                    fig.add_trace(go.Scatter3d(
+                        x=type_events['Sensor Lon'],
+                        y=type_events['Sensor Lat'],
+                        z=[0] * len(type_events),
                         mode='markers',
-                        marker=dict(size=8, color=type_colors.get(stype, '#FF0000'), symbol='diamond'),
-                        name=f'Sensor {stype}'
+                        name=f'Sensor {stype}',
+                        marker=dict(size=8, color=type_colors.get(stype, '#FF0000'), symbol='diamond')
                     ))
 
-        center_lat = flight_df['GPS Lat'].mean()
-        center_lon = flight_df['GPS Lon'].mean()
-
         fig.update_layout(
-            mapbox=dict(
-                style='open-street-map',
-                center=dict(lat=center_lat, lon=center_lon),
-                zoom=11,
-                pitch=60,
+            title=f"3D Flight Path - Flight {flight}",
+            scene=dict(
+                xaxis_title='Longitude',
+                yaxis_title='Latitude',
+                zaxis_title='Altitude (m)',
+                camera=dict(eye=dict(x=1.5, y=1.5, z=1.5))
             ),
-            height=700,
-            margin=dict(l=0, r=0, t=30, b=0),
-            title=f"3D Flight Path - Flight {flight}"
+            height=700
         )
 
         return fig
