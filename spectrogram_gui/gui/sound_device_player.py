@@ -5,6 +5,7 @@ import time
 import os
 
 from PyQt5.QtWidgets import QWidget, QHBoxLayout, QPushButton
+from PyQt5.QtCore import Qt
 from spectrogram_gui.utils.ffmpeg_utils import convert_to_wav
 import soundfile as sf
 
@@ -30,6 +31,8 @@ class SoundDevicePlayer(QWidget):
 
         # Layout + Play/Stop buttons
         self.layout = QHBoxLayout(self)
+        self.layout.setSpacing(12)
+        self.layout.setAlignment(Qt.AlignCenter)
         self.play_btn = QPushButton("▶ Play")
         self.stop_btn = QPushButton("⏹ Stop")
         self.play_btn.clicked.connect(self.play)

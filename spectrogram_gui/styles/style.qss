@@ -24,22 +24,22 @@ QPushButton, QToolButton {
     border: none;
     border-radius: 8px;
     padding: 8px 16px;
-    background-color: rgba(30, 144, 255, 180);  /* DodgerBlue 70% */
+    background-color: rgba(94, 179, 255, 180);  /* Light blue */
 }
 
 QPushButton:hover, QToolButton:hover {
-    background-color: rgba(30, 144, 255, 230);
-    /* מעט פחות שקיפות ב־hover */
-    box-shadow: 0px 2px 8px rgba(30, 144, 255, 120);
+    background-color: rgba(94, 179, 255, 230);
+    /* slightly less transparent on hover */
+    box-shadow: 0px 2px 8px rgba(94, 179, 255, 120);
 }
 
 QPushButton:pressed, QToolButton:pressed {
-    background-color: rgba(25, 120, 220, 210);
+    background-color: rgba(80, 150, 230, 210);
 }
 
 QPushButton:disabled, QToolButton:disabled {
     color: #888888;
-    background-color: rgba(30, 144, 255, 80);
+    background-color: rgba(94, 179, 255, 80);
 }
 
 /* 3) QListWidget (file list) styling:
