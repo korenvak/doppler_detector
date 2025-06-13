@@ -274,7 +274,7 @@ class MainWindow(QMainWindow):
 
         self.param_panel = ParamPanel(self)
         self.param_panel.toggle(False)
-        self.param_panel.bind_detector(self.detector)
+        self.param_panel.bind_settings()
         right_layout.addWidget(self.param_panel)
 
         controls_layout = QHBoxLayout()
@@ -315,6 +315,19 @@ class MainWindow(QMainWindow):
         self.audio_folder = None
         self.current_file = None
         self.csv_path = None
+        self.filter_params = {
+            "nlms_enabled": False,
+            "lms_enabled": False,
+            "ale_enabled": False,
+            "rls_enabled": False,
+            "wiener_enabled": False,
+            "nlms_mu": 10,
+            "lms_mu": 10,
+            "ale_mu": 10,
+            "ale_delay": 0,
+            "rls_lambda": 99,
+            "wiener_noise": -20,
+        }
         self.undo_stack = []
 
         # Undo shortcut
