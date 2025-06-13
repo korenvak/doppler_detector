@@ -18,6 +18,8 @@ from spectrogram_gui.utils.filter_utils import (
     apply_ale,
     apply_rls,
     apply_wiener,
+    apply_gaussian,
+    apply_median,
 )
 
 
@@ -33,7 +35,7 @@ class CombinedFilterDialog(QDialog):
         super().__init__(main_window)
         self.main = main_window
         self.setWindowTitle("Apply Filters")
-        self.resize(400, 200)
+        self.resize(460, 220)
 
         layout = QVBoxLayout(self)
 
@@ -43,11 +45,15 @@ class CombinedFilterDialog(QDialog):
         self.ale_chk = QCheckBox("Enable ALE")
         self.rls_chk = QCheckBox("Enable RLS")
         self.wiener_chk = QCheckBox("Enable Wiener Adaptive")
+        self.gauss_chk = QCheckBox("Gaussian Smooth")
+        self.median_chk = QCheckBox("Median Filter")
         layout.addWidget(self.nlms_chk)
         layout.addWidget(self.lms_chk)
         layout.addWidget(self.ale_chk)
         layout.addWidget(self.rls_chk)
         layout.addWidget(self.wiener_chk)
+        layout.addWidget(self.gauss_chk)
+        layout.addWidget(self.median_chk)
 
         # --- parameter controls ---
         p_layout = QHBoxLayout()
@@ -93,6 +99,20 @@ class CombinedFilterDialog(QDialog):
         self.wiener_spin.setSingleStep(1)
         self.wiener_spin.setValue(-20)
         p_layout.addWidget(self.wiener_spin)
+
+        p_layout.addWidget(QLabel("Gauss σ:"))
+        self.gauss_spin = QDoubleSpinBox()
+        self.gauss_spin.setRange(0.1, 10.0)
+        self.gauss_spin.setSingleStep(0.1)
+        self.gauss_spin.setValue(1.0)
+        p_layout.addWidget(self.gauss_spin)
+
+        p_layout.addWidget(QLabel("Median k:"))
+        self.median_spin = QSpinBox()
+        self.median_spin.setRange(1, 99)
+        self.median_spin.setSingleStep(2)
+        self.median_spin.setValue(3)
+        p_layout.addWidget(self.median_spin)
 
         layout.addLayout(p_layout)
 
@@ -169,6 +189,12 @@ class CombinedFilterDialog(QDialog):
             out = apply_rls(out, forgetting_factor=self.rls_spin.value(), filter_order=order)
         if self.wiener_chk.isChecked():
             out = apply_wiener(out, noise_db=self.wiener_spin.value())
+
+        if self.gauss_chk.isChecked():
+            out = apply_gaussian(out, sigma=self.gauss_spin.value())
+
+        if self.median_chk.isChecked():
+            out = apply_median(out, size=self.median_spin.value())
 
         # 5) write back & replot
         new_wave = wave.copy()

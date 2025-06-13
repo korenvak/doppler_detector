@@ -9,7 +9,7 @@ from spectrogram_gui.utils.spectrogram_utils import compute_spectrogram
 
 class FilterDialog(QDialog):
     """
-    Simple high-pass or band-pass filter.
+    Simple high-pass, low-pass or band-pass filter.
     """
     def __init__(self, main_window, mode="bandpass"):
         super().__init__(main_window)
@@ -20,11 +20,13 @@ class FilterDialog(QDialog):
 
         layout = QVBoxLayout(self)
         freq_layout = QHBoxLayout()
-        freq_layout.addWidget(QLabel("Low cutoff (Hz):"))
-        self.low_edit = QLineEdit("100")
-        freq_layout.addWidget(self.low_edit)
 
-        if mode == "bandpass":
+        if mode != "lowpass":
+            freq_layout.addWidget(QLabel("Low cutoff (Hz):"))
+            self.low_edit = QLineEdit("100")
+            freq_layout.addWidget(self.low_edit)
+
+        if mode != "highpass":
             freq_layout.addWidget(QLabel("High cutoff (Hz):"))
             self.high_edit = QLineEdit("3000")
             freq_layout.addWidget(self.high_edit)
@@ -38,8 +40,9 @@ class FilterDialog(QDialog):
 
     def apply_filter(self):
         try:
-            low = float(self.low_edit.text())
-            if self.mode == "bandpass":
+            if self.mode != "lowpass":
+                low = float(self.low_edit.text())
+            if self.mode != "highpass":
                 high = float(self.high_edit.text())
         except ValueError:
             QMessageBox.warning(self, "Invalid", "Enter valid cutoffs.")
@@ -61,9 +64,11 @@ class FilterDialog(QDialog):
 
         # design & apply
         if self.mode == "highpass":
-            sos = butter(4, low, btype='highpass', fs=sr, output='sos')
+            sos = butter(4, low, btype="highpass", fs=sr, output="sos")
+        elif self.mode == "lowpass":
+            sos = butter(4, high, btype="lowpass", fs=sr, output="sos")
         else:
-            sos = butter(4, [low, high], btype='bandpass', fs=sr, output='sos')
+            sos = butter(4, [low, high], btype="bandpass", fs=sr, output="sos")
 
         seg = wave[i0:i1].copy()
         filtered = sosfilt(sos, seg)
