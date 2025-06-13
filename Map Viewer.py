@@ -163,8 +163,9 @@ def calculate_data_quality_metrics(df_sum, coverage_per_pixel, coverage_per_type
     return quality_metrics
 
 
-def calculate_flight_dynamics(flight_df):
-    """Calculate flight dynamics including speed, acceleration, turning angles"""
+def calculate_flight_dynamics(flight_df, sensor_lat=None, sensor_lon=None):
+    """Calculate flight dynamics including speed, acceleration, turning angles,
+    and relative motion to an optional sensor position."""
     if len(flight_df) < 3:
         return flight_df
 
@@ -205,6 +206,21 @@ def calculate_flight_dynamics(flight_df):
 
     # Calculate acceleration
     flight_df['acceleration'] = flight_df['speed_smooth'].diff() / flight_df['time_diff'].fillna(1)
+
+    # Relative movement to sensor if provided
+    if sensor_lat is not None and sensor_lon is not None:
+        from geopy.distance import geodesic
+        sensor_coord = (sensor_lat, sensor_lon)
+        flight_df['dist_to_sensor'] = [
+            geodesic(sensor_coord, (lat, lon)).meters for lat, lon in coords
+        ]
+        flight_df['dist_change'] = flight_df['dist_to_sensor'].diff().fillna(0)
+        flight_df['relative_movement'] = flight_df['dist_change'].apply(
+            lambda d: 'approaching' if d < -1 else (
+                'departing' if d > 1 else 'steady')
+        )
+    else:
+        flight_df['relative_movement'] = 'unknown'
 
     # Calculate heading changes (turning angles)
     headings = []
@@ -254,7 +270,7 @@ def calculate_flight_dynamics(flight_df):
 
 
 def analyze_sensor_detection_by_movement(df_sum, flight_df):
-    """Analyze which movement types are detected by sensors"""
+    """Analyze which movement patterns are detected by sensors."""
     detection_analysis = {
         'movement_type': [],
         'total_points': [],
@@ -263,7 +279,7 @@ def analyze_sensor_detection_by_movement(df_sum, flight_df):
         'avg_distance': []
     }
 
-    if 'movement_type' not in flight_df.columns or flight_df.empty:
+    if ('movement_type' not in flight_df.columns and 'relative_movement' not in flight_df.columns) or flight_df.empty:
         return pd.DataFrame(detection_analysis)
 
     # Get the flight number from the dataframe
@@ -273,10 +289,11 @@ def analyze_sensor_detection_by_movement(df_sum, flight_df):
         # Try to extract from other available data
         flight_num = df_sum['Flight number'].iloc[0] if not df_sum.empty else 1
 
-    movement_types = flight_df['movement_type'].unique()
+    movement_col = 'relative_movement' if 'relative_movement' in flight_df.columns else 'movement_type'
+    movement_types = flight_df[movement_col].unique()
 
     for mov_type in movement_types:
-        mov_points = flight_df[flight_df['movement_type'] == mov_type]
+        mov_points = flight_df[flight_df[movement_col] == mov_type]
         total = len(mov_points)
 
         # Find detections during this movement type
@@ -452,8 +469,15 @@ def process_flight_data():
         if window.empty:
             continue
 
+        # Calculate dynamics relative to the pixel's sensor position
+        window = calculate_flight_dynamics(
+            window,
+            sensor_lat=ev['Sensor Lat'],
+            sensor_lon=ev['Sensor Lon']
+        )
+
         coords = window[['GPS Lat', 'GPS Lon']].values.tolist()
-        meta = window[['Sensor Type', 'Doppler Type', 'Time', 'dist3D']].to_dict('records')
+        meta = window[['Sensor Type', 'Doppler Type', 'Time', 'dist3D', 'relative_movement']].to_dict('records')
         dict_pixel.setdefault((fl, px), []).append((coords, meta, snapshot))
 
     return dict_pixel
@@ -1145,6 +1169,8 @@ def update_map(flight, view_mode, selection, display_options):
                                     html.Strong("📡 Doppler: "), f"{m['Doppler Type']}", html.Br(),
                                     html.Strong("⏰ Time: "), f"{m['Time']}", html.Br(),
                                     html.Strong("📏 Distance: "), f"{m['dist3D']:.2f}m",
+                                    html.Br(),
+                                    html.Strong("🚦 Movement: "), f"{m.get('relative_movement', 'n/a')}",
                                     coverage_text
                                 ], className="mb-2 small"),
 
@@ -1268,6 +1294,8 @@ def update_map(flight, view_mode, selection, display_options):
                                         html.Strong("📡 Doppler: "), f"{m['Doppler Type']}", html.Br(),
                                         html.Strong("⏰ Time: "), f"{m['Time']}", html.Br(),
                                         html.Strong("📏 Distance: "), f"{m['dist3D']:.2f}m",
+                                        html.Br(),
+                                        html.Strong("🚦 Movement: "), f"{m.get('relative_movement', 'n/a')}",
                                         coverage_text
                                     ], className="small mb-0")
                                 ])
@@ -1403,7 +1431,7 @@ def update_3d_view(flight, options):
                     fig.add_trace(go.Scatter3d(
                         x=type_events['Sensor Lon'],
                         y=type_events['Sensor Lat'],
-                        z=[flight_df['GPS Alt'].mean()] * len(type_events),  # Place sensors at average altitude
+                        z=[0] * len(type_events),  # Sensors are on the ground
                         mode='markers',
                         name=f'Sensor {stype}',
                         marker=dict(
@@ -1412,6 +1440,21 @@ def update_3d_view(flight, options):
                             symbol='diamond'
                         )
                     ))
+
+        # Add simple ground plane for context
+        lon_min, lon_max = flight_df['GPS Lon'].min(), flight_df['GPS Lon'].max()
+        lat_min, lat_max = flight_df['GPS Lat'].min(), flight_df['GPS Lat'].max()
+        plane_x, plane_y = np.meshgrid([lon_min, lon_max], [lat_min, lat_max])
+        plane_z = np.zeros_like(plane_x)
+        fig.add_trace(go.Surface(
+            x=plane_x,
+            y=plane_y,
+            z=plane_z,
+            showscale=False,
+            opacity=0.2,
+            colorscale=[[0, '#AAAAAA'], [1, '#AAAAAA']],
+            name='Ground'
+        ))
 
         # Add movement type annotations
         if 'movement' in (options or []) and flight_df is not None and 'movement_type' in flight_df.columns:
