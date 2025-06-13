@@ -173,7 +173,9 @@ def calculate_flight_dynamics(flight_df, sensor_lat=None, sensor_lon=None):
 
     # Calculate time differences (assuming Time column exists)
     if 'Time' in flight_df.columns:
-        flight_df['time_diff'] = pd.to_datetime(flight_df['Time']).diff().dt.total_seconds()
+        flight_df['time_diff'] = pd.to_datetime(
+            flight_df['Time'], errors='coerce'
+        ).diff().dt.total_seconds()
     else:
         # If no time column, assume 1 second intervals
         flight_df['time_diff'] = 1.0
@@ -1396,16 +1398,30 @@ def update_3d_view(flight, options):
         center_lat = flight_df['GPS Lat'].mean()
         center_lon = flight_df['GPS Lon'].mean()
 
-        fig.update_layout(
-            mapbox=dict(
-                style='satellite',
-                center=dict(lat=center_lat, lon=center_lon),
-                zoom=13,
-                pitch=60
-            ),
-            title=f"3D Flight Map - Flight {flight}",
-            height=700
-        )
+        mapbox_token = os.environ.get('MAPBOX_TOKEN')
+        if mapbox_token:
+            fig.update_layout(
+                mapbox=dict(
+                    style='satellite',
+                    center=dict(lat=center_lat, lon=center_lon),
+                    zoom=13,
+                    pitch=60,
+                    accesstoken=mapbox_token
+                ),
+                title=f"3D Flight Map - Flight {flight}",
+                height=700
+            )
+        else:
+            fig.update_layout(
+                mapbox_style='open-street-map',
+                mapbox=dict(
+                    center=dict(lat=center_lat, lon=center_lon),
+                    zoom=13,
+                    pitch=60
+                ),
+                title=f"3D Flight Map - Flight {flight}",
+                height=700
+            )
 
         return fig
 
