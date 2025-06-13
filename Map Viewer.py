@@ -244,8 +244,8 @@ def calculate_flight_dynamics(flight_df, sensor_lat=None, sensor_lon=None):
     # Calculate heading changes (turning angles)
     headings = []
     for i in range(1, len(coords)):
-        lat1, lon1 = coords[i - 1]
-        lat2, lon2 = coords[i]
+        lat1, lon1 = coords[i - 1][:2]
+        lat2, lon2 = coords[i][:2]
         # Calculate bearing
         dlon = np.radians(lon2 - lon1)
         lat1_rad = np.radians(lat1)
