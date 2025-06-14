@@ -27,7 +27,7 @@ from spectrogram_gui.utils.filter_utils import (
 class CombinedFilterDialog(QDialog):
     """Dialog to apply a single adaptive or smoothing filter."""
 
-    def __init__(self, main_window):
+    def __init__(self, main_window, initial_filter: str | None = None):
         super().__init__(main_window)
         self.main = main_window
         self.setWindowTitle("Apply Filter")
@@ -154,6 +154,12 @@ class CombinedFilterDialog(QDialog):
         layout.addWidget(self.stack)
 
         self.filter_box.currentIndexChanged.connect(self.stack.setCurrentIndex)
+
+        if initial_filter:
+            idx = self.filter_box.findText(initial_filter)
+            if idx >= 0:
+                self.filter_box.setCurrentIndex(idx)
+            self.filter_box.setVisible(False)
 
         buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
         buttons.accepted.connect(self.apply_filter)
