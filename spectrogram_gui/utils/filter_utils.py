@@ -290,3 +290,11 @@ def apply_lowpass(x: np.ndarray, cutoff: float, sr: int, order: int = 4) -> np.n
     """Apply a Butterworth low-pass filter."""
     sos = butter(order, cutoff, btype="lowpass", fs=sr, output="sos")
     return sosfilt(sos, x.astype(np.float64, copy=False))
+
+
+def apply_tv_denoising(x: np.ndarray, weight: float = 0.1) -> np.ndarray:
+    """Total variation denoising using skimage."""
+    from skimage.restoration import denoise_tv_chambolle
+
+    x = x.astype(np.float64, copy=False)
+    return denoise_tv_chambolle(x, weight=weight)
