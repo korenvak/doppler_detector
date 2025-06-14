@@ -374,6 +374,13 @@ class DopplerDetector(Detector):
         print(f"[Advanced] detection {time.perf_counter()-start_t:.2f}s")
         return tracks
 
+    def detect_tracks_pattern(self):
+        """Detect tracks using the AutoPatternDetector helper."""
+        from .pattern_detector import AutoPatternDetector
+
+        pd = AutoPatternDetector(self)
+        return pd.detect_tracks_auto()
+
     def run_advanced_detection(self, filepath):
         start_t = time.perf_counter()
         y, sr = self.load_audio(filepath)
@@ -405,6 +412,8 @@ class DopplerDetector(Detector):
         f, t, Sxx_norm, Sxx_filt = self.compute_spectrogram(y, sr, filepath)
         if self.detection_method == "advanced":
             tracks = self.detect_tracks_advanced()
+        elif self.detection_method == "pattern":
+            tracks = self.detect_tracks_pattern()
         else:
             peaks = self.detect_peaks_per_frame()
             tracks = self.track_peaks_over_time(peaks)
@@ -435,7 +444,6 @@ class AdaptiveFilterDetector(DopplerDetector):
         ale_delay=None,
         ale_mu=0.1,
         ale_lambda=0.995,
-        wiener_noise_db=-20,
         use_tv_denoising=False,
         tv_denoising_weight=0.1,
         **kwargs,
@@ -445,7 +453,6 @@ class AdaptiveFilterDetector(DopplerDetector):
         self.ale_delay = ale_delay
         self.ale_mu = ale_mu
         self.ale_lambda = ale_lambda
-        self.wiener_noise_db = wiener_noise_db
         self.use_tv_denoising = use_tv_denoising
         self.tv_denoising_weight = tv_denoising_weight
 

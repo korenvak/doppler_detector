@@ -68,7 +68,6 @@ def apply_ale(
     test_delays: Optional[Union[int, List[int]]] = None,
     return_all: bool = False,
     return_metrics: bool = False,
-    forgetting_factor: Optional[float] = None,
     slope: float = 0.0,
     freq_domain: bool = False,
     return_error: bool = False,
@@ -97,8 +96,6 @@ def apply_ale(
         If ``True``, return a list of all predictions for each tested delay.
     return_metrics : bool
         If ``True``, also return the SNR metric (in dB) for each tested delay.
-    forgetting_factor : float, optional
-        Placeholder for backwards compatibility (unused).
     slope : float, optional
         Linear slope factor applied to the delay to better follow
         frequency-drifting tones. Default is ``0.0``.
@@ -284,7 +281,6 @@ def apply_wiener_adaptive(x: np.ndarray, window_size: int = 1024) -> np.ndarray:
 def apply_tv_denoising_doppler(
     Sxx: np.ndarray,
     weight_freq: float = 0.01,
-    weight_time: float = 0.001,
     preserve_edges: bool = True,
 ) -> np.ndarray:
     """TV denoising that preserves Doppler tracks."""
@@ -330,8 +326,25 @@ def apply_ale_2d_doppler(
     delay: int = 3,
     mu: float = 0.01,
     filter_order: int = 32,
+    slope: float = 0.0,
 ) -> np.ndarray:
-    """Apply ALE over neighbouring frequency bins to keep Doppler coherence."""
+    """Apply ALE over neighbouring bins while allowing a slope.
+
+    Parameters
+    ----------
+    Sxx : np.ndarray
+        Input magnitude spectrogram.
+    track_width : int, optional
+        Number of neighbouring bins to include when averaging. Default ``5``.
+    delay : int, optional
+        ALE delay parameter. Default ``3``.
+    mu : float, optional
+        Adaptation rate. Default ``0.01``.
+    filter_order : int, optional
+        Adaptive filter order. Default ``32``.
+    slope : float, optional
+        Linear slope used when calling :func:`apply_ale`. Default ``0.0``.
+    """
     half = track_width // 2
     weights = np.exp(-0.5 * (np.arange(track_width) - half) ** 2)
     weights /= weights.sum()
@@ -345,6 +358,7 @@ def apply_ale_2d_doppler(
             delay=delay,
             mu=mu,
             filter_order=filter_order,
+            slope=slope,
             freq_domain=False,
             return_error=False,
         )
@@ -361,7 +375,11 @@ def apply_ale_2d_doppler_wave(
     n_fft: int = 1024,
     hop_length: int = 512,
 ) -> np.ndarray:
-    """Convenience wrapper applying ALE 2D Doppler in the STFT domain."""
+    """Convenience wrapper applying ALE 2D Doppler in the STFT domain.
+
+    The ``slope`` parameter is forwarded to :func:`apply_ale_2d_doppler` so
+    drifting tones can be followed more closely.
+    """
     f, t, Zxx = stft(x, nperseg=n_fft, noverlap=n_fft - hop_length)
     mag = np.abs(Zxx)
     phase = np.angle(Zxx)
@@ -370,6 +388,7 @@ def apply_ale_2d_doppler_wave(
         delay=delay,
         mu=mu,
         filter_order=filter_order,
+        slope=slope,
     )
     Zxx_f = Sxx_f * np.exp(1j * phase)
     _, out = istft(Zxx_f, nperseg=n_fft, noverlap=n_fft - hop_length)
