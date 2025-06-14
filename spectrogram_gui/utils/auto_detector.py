@@ -4,7 +4,6 @@ from tqdm import tqdm
 from scipy.ndimage import gaussian_filter, median_filter, label, laplace, binary_opening
 from scipy.signal import find_peaks, wiener
 from skimage.transform import probabilistic_hough_line
-from skimage.feature import hessian_matrix, hessian_matrix_eigvals
 from skimage.morphology import remove_small_objects, skeletonize
 # use your spectrogram and audio‐loading utils instead of soundfile + scipy.spectrogram
 from spectrogram_gui.utils.audio_utils import load_audio_with_filters
@@ -13,8 +12,6 @@ from spectrogram_gui.utils.filter_utils import (
     apply_nlms,
     apply_ale_2d_doppler_wave,
     apply_wiener_adaptive,
-    apply_tv_denoising_doppler_wave,
-    apply_tv_denoising_doppler,
 )
 
 # Default frequency range (Hz)
@@ -61,7 +58,6 @@ class DopplerDetector(Detector):
         adv_min_line_length=30,
         adv_line_gap=10,
         adv_use_cfar=True,
-        adv_use_ridge=True,
         adv_ridge_sigma=2.5,
         adv_cfar_train=20,
         adv_cfar_guard=2,
@@ -78,16 +74,6 @@ class DopplerDetector(Detector):
         threshold_adjust_step=1.0,
         enable_post_merge=True,
         fast_mode=False,
-        use_tv_denoising=False,
-        tv_denoising_weight=0.1,
-        wiener_size=(5, 5),
-        ale_delay=3,
-        ale_mu=0.1,
-        ale_order=32,
-        ale_width=5,
-        track_enhance=False,
-        track_enhance_factor=2.0,
-        visualize=False,
     ):
         # detection parameters
         self.freq_min = freq_min
@@ -112,7 +98,6 @@ class DopplerDetector(Detector):
         self.adv_min_line_length = adv_min_line_length
         self.adv_line_gap = adv_line_gap
         self.adv_use_cfar = adv_use_cfar
-        self.adv_use_ridge = adv_use_ridge
         self.adv_ridge_sigma = adv_ridge_sigma
         self.adv_cfar_train = adv_cfar_train
         self.adv_cfar_guard = adv_cfar_guard
@@ -129,16 +114,6 @@ class DopplerDetector(Detector):
         self.threshold_adjust_step = threshold_adjust_step
         self.enable_post_merge = enable_post_merge
         self.fast_mode = fast_mode
-        self.use_tv_denoising = use_tv_denoising
-        self.tv_denoising_weight = tv_denoising_weight
-        self.wiener_size = wiener_size
-        self.ale_delay = ale_delay
-        self.ale_mu = ale_mu
-        self.ale_order = ale_order
-        self.ale_width = ale_width
-        self.track_enhance = track_enhance
-        self.track_enhance_factor = track_enhance_factor
-        self.visualize = visualize
 
         # will be set in compute_spectrogram
         self.freqs = None
@@ -164,59 +139,7 @@ class DopplerDetector(Detector):
         self.freqs = freqs
         self.times = times
         self.Sxx_filt = Sxx_filt
-        self.apply_adaptive_filters()
         return freqs, times, Sxx_norm, Sxx_filt
-
-    def apply_adaptive_filters(self):
-        """Run configured adaptive filters on ``self.Sxx_filt`` in-place."""
-        assert isinstance(self.Sxx_filt, np.ndarray) and self.Sxx_filt.ndim == 2
-        assert np.isfinite(self.Sxx_filt).all()
-
-        def log_stats(stage, arr):
-            if not self.visualize:
-                return
-            mn, mx = float(arr.min()), float(arr.max())
-            nz = 100.0 * np.count_nonzero(arr) / arr.size
-            print(f"[Filter:{stage}] min={mn:.3f} max={mx:.3f} nonzero={nz:.1f}%")
-
-        S = self.Sxx_filt
-        log_stats("start", S)
-
-        try:
-            S = apply_wiener_adaptive_2d(S, size=self.wiener_size)
-            log_stats("wiener", S)
-        except Exception as e:
-            print("[Filter] Wiener failed", e)
-
-        try:
-            S = apply_ale_2d_doppler(
-                S,
-                track_width=self.ale_width if hasattr(self, "ale_width") else 5,
-                delay=self.ale_delay,
-                mu=self.ale_mu,
-                filter_order=self.ale_order,
-            )
-            log_stats("ale", S)
-        except Exception as e:
-            print("[Filter] ALE failed", e)
-
-        if self.track_enhance:
-            try:
-                S = apply_track_following_filter(
-                    S, enhancement_factor=self.track_enhance_factor
-                )
-                log_stats("track", S)
-            except Exception as e:
-                print("[Filter] track-follow failed", e)
-
-        if self.use_tv_denoising:
-            try:
-                S = apply_tv_denoising_doppler(S, weight_freq=self.tv_denoising_weight)
-                log_stats("tv", S)
-            except Exception as e:
-                print("[Filter] TV denoise failed", e)
-
-        self.Sxx_filt = S
 
     def detect_peaks_per_frame(self):
         """
@@ -363,8 +286,8 @@ class DopplerDetector(Detector):
         return [e["track"] for e in merged]
 
     def _preprocess_spectrogram(self, Sxx):
-        """Basic preprocessing before ridge/Hough detection."""
         S = np.log1p(Sxx)
+        S = wiener(S, (5, 5))
         S = S - 0.3 * laplace(S)
         return S
 
@@ -382,12 +305,6 @@ class DopplerDetector(Detector):
                 mask[fi] = Sxx[fi] > thr
         return mask
 
-    def _ridge_detection(self, Sxx, sigma=3.0):
-        """Detect ridges using eigenvalues of the Hessian matrix."""
-        H = hessian_matrix(Sxx, sigma=sigma, order='rc', use_gaussian_derivatives=False)
-        ridges, _ = hessian_matrix_eigvals(H)
-        thr = np.percentile(np.abs(ridges), 85)
-        return np.abs(ridges) > thr
 
     def detect_tracks_advanced(self):
         start_t = time.perf_counter()
@@ -409,16 +326,10 @@ class DopplerDetector(Detector):
         else:
             cfar_m = np.ones_like(base_m, dtype=bool)
 
-        if self.adv_use_ridge:
-            ridge_m = self._ridge_detection(band, sigma=self.adv_ridge_sigma)
-        else:
-            ridge_m = np.ones_like(base_m, dtype=bool)
-
-        mask = base_m & (ridge_m | cfar_m)
+        mask = base_m | cfar_m
         print(
             "Base:", base_m.sum(),
             "CFAR:", cfar_m.sum(),
-            "Ridge:", ridge_m.sum(),
             "Combined:", mask.sum(),
         )
         mask = binary_opening(mask, iterations=1)
@@ -456,14 +367,6 @@ class DopplerDetector(Detector):
         print(f"[Pattern] detection {time.perf_counter()-start_t:.2f}s")
         return tracks
 
-    def detect_tracks_pattern(self):
-        """Detect tracks using the AutoPatternDetector helper."""
-        from .auto_pattern_detector import AutoPatternDetector
-
-        pd = AutoPatternDetector(self)
-        return pd.detect_tracks_auto()
-
-
 
     def run_detection(self, filepath):
         """
@@ -473,8 +376,8 @@ class DopplerDetector(Detector):
         start_t = time.perf_counter()
         y, sr = self.load_audio(filepath)
         f, t, Sxx_norm, Sxx_filt = self.compute_spectrogram(y, sr, filepath)
-        if self.detection_method == "pattern":
-            tracks = self.detect_tracks_pattern()
+        if self.detection_method == "advanced":
+            tracks = self.detect_tracks_advanced()
         else:
             peaks = self.detect_peaks_per_frame()
             tracks = self.track_peaks_over_time(peaks)
@@ -507,8 +410,6 @@ class AdaptiveFilterDetector(DopplerDetector):
         ale_delay=None,
         ale_mu=0.1,
         ale_lambda=0.995,
-        use_tv_denoising=False,
-        tv_denoising_weight=0.1,
         **kwargs,
     ):
         super().__init__(*args, **kwargs)
@@ -516,8 +417,6 @@ class AdaptiveFilterDetector(DopplerDetector):
         self.ale_delay = ale_delay
         self.ale_mu = ale_mu
         self.ale_lambda = ale_lambda
-        self.use_tv_denoising = use_tv_denoising
-        self.tv_denoising_weight = tv_denoising_weight
 
     def load_audio(self, filepath):
         y, sr = super().load_audio(filepath)
@@ -532,6 +431,4 @@ class AdaptiveFilterDetector(DopplerDetector):
                 filter_order=order,
             )
         y = apply_wiener_adaptive(y, window_size=1024)
-        if self.use_tv_denoising:
-            y = apply_tv_denoising_doppler_wave(y, weight=self.tv_denoising_weight)
         return y, sr
