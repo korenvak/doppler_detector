@@ -1,5 +1,1 @@
-from .auto_pattern_detector import AutoPatternDetector
-
-__all__ = [
-    "AutoPatternDetector",
-]
+__all__ = []

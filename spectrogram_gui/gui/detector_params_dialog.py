@@ -18,9 +18,9 @@ class DetectorParamsDialog(QDialog):
 
         if self.mode == "both":
             self.method_box = QComboBox()
-            self.method_box.addItems(["Peaks", "Pattern"])
+            self.method_box.addItems(["Peaks", "Advanced"])
             method = getattr(detector, "detection_method", "peaks")
-            if method == "pattern":
+            if method == "advanced":
                 self.method_box.setCurrentIndex(1)
             layout.addRow("Detection Method:", self.method_box)
         else:
@@ -132,19 +132,9 @@ class DetectorParamsDialog(QDialog):
         self.merge_freq_diff_spin.setValue(detector.merge_max_freq_diff_hz)
         layout.addRow("Merge Max Freq Diff [Hz]:", self.merge_freq_diff_spin)
 
-        self.tv_check = QCheckBox("Use TV Denoising")
-        self.tv_check.setChecked(getattr(detector, "use_tv_denoising", False))
-        layout.addRow(self.tv_check)
 
-        self.tv_weight_spin = QDoubleSpinBox()
-        self.tv_weight_spin.setDecimals(2)
-        self.tv_weight_spin.setRange(0.05, 0.3)
-        self.tv_weight_spin.setSingleStep(0.01)
-        self.tv_weight_spin.setValue(getattr(detector, "tv_denoising_weight", 0.1))
-        layout.addRow("TV Denoising Weight:", self.tv_weight_spin)
-
-        # --- Pattern Detection Parameters ---
-        self.adv_header = QLabel("<b>Pattern Detection Parameters</b>")
+        # --- Advanced Detection Parameters ---
+        self.adv_header = QLabel("<b>Advanced Detection Parameters</b>")
         layout.addRow(self.adv_header)
 
         # 18) Advanced mask percentile
@@ -207,18 +197,6 @@ class DetectorParamsDialog(QDialog):
         self.adv_cfar_pfa_spin.setToolTip("Desired false alarm probability")
         layout.addRow("CFAR PFA:", self.adv_cfar_pfa_spin)
 
-        self.adv_use_ridge_check = QCheckBox("Use Ridge Detection")
-        self.adv_use_ridge_check.setChecked(detector.adv_use_ridge)
-        self.adv_use_ridge_check.setToolTip("Enable ridge-based mask from Hessian")
-        layout.addRow(self.adv_use_ridge_check)
-
-        self.adv_ridge_sigma_spin = QDoubleSpinBox()
-        self.adv_ridge_sigma_spin.setDecimals(1)
-        self.adv_ridge_sigma_spin.setSingleStep(0.1)
-        self.adv_ridge_sigma_spin.setRange(0.1, 10.0)
-        self.adv_ridge_sigma_spin.setValue(detector.adv_ridge_sigma)
-        self.adv_ridge_sigma_spin.setToolTip("Gaussian sigma for ridge detection")
-        layout.addRow("Ridge Sigma:", self.adv_ridge_sigma_spin)
 
         self.adv_min_obj_spin = QSpinBox()
         self.adv_min_obj_spin.setRange(1, 1000)
@@ -281,10 +259,10 @@ class DetectorParamsDialog(QDialog):
     def update_visibility(self):
         if self.method_box is None:
             peaks = self.mode == "peaks"
-            pattern = self.mode == "pattern"
+            advanced = self.mode == "advanced"
         else:
             peaks = self.method_box.currentIndex() == 0
-            pattern = self.method_box.currentIndex() == 1
+            advanced = self.method_box.currentIndex() == 1
 
         peak_widgets = [
             self.power_thresh_spin,
@@ -301,7 +279,7 @@ class DetectorParamsDialog(QDialog):
             self.max_std_spin,
         ]
 
-        pattern_widgets = [
+        adv_widgets = [
             self.adv_thresh_label,
             self.adv_thresh_spin,
             self.thresh_method_box,
@@ -311,7 +289,6 @@ class DetectorParamsDialog(QDialog):
             self.adv_gap_spin,
             self.adv_slope_label,
             self.adv_slope_spin,
-            self.adv_ridge_sigma_spin,
             self.adv_min_obj_spin,
             self.adv_use_skeleton_check,
             self.median_check,
@@ -339,19 +316,19 @@ class DetectorParamsDialog(QDialog):
         for w in peak_widgets:
             show_row(w, peaks)
 
-        for w in pattern_widgets:
-            show_row(w, pattern)
-
+        for w in adv_widgets:
+            show_row(w, advanced)
+        
         method = self.thresh_method_box.currentText()
-        show_row(self.adv_thresh_label, pattern and method == "percentile")
-        show_row(self.adv_thresh_spin, pattern and method == "percentile")
+        show_row(self.adv_thresh_label, advanced and method == "percentile")
+        show_row(self.adv_thresh_spin, advanced and method == "percentile")
         cfar_widgets = [
             self.adv_cfar_train_spin,
             self.adv_cfar_guard_spin,
             self.adv_cfar_pfa_spin,
         ]
         for w in cfar_widgets:
-            show_row(w, pattern and method == "cfar")
+            show_row(w, advanced and method == "cfar")
 
     def accept(self):
         d = self.detector
@@ -370,8 +347,6 @@ class DetectorParamsDialog(QDialog):
         d.max_track_freq_std_hz = self.max_std_spin.value()
         d.merge_gap_frames = self.merge_gap_spin.value()
         d.merge_max_freq_diff_hz = self.merge_freq_diff_spin.value()
-        d.use_tv_denoising = self.tv_check.isChecked()
-        d.tv_denoising_weight = self.tv_weight_spin.value()
         d.adv_threshold_percentile = self.adv_thresh_spin.value()
         d.adv_min_line_length = self.adv_len_spin.value()
         d.adv_line_gap = self.adv_gap_spin.value()
@@ -379,8 +354,6 @@ class DetectorParamsDialog(QDialog):
         d.adv_cfar_train = self.adv_cfar_train_spin.value()
         d.adv_cfar_guard = self.adv_cfar_guard_spin.value()
         d.adv_cfar_pfa = self.adv_cfar_pfa_spin.value()
-        d.adv_use_ridge = self.adv_use_ridge_check.isChecked()
-        d.adv_ridge_sigma = self.adv_ridge_sigma_spin.value()
         d.adv_min_object_size = self.adv_min_obj_spin.value()
         d.adv_use_skeleton = self.adv_use_skeleton_check.isChecked()
         d.adv_threshold_method = self.thresh_method_box.currentText()
@@ -392,11 +365,8 @@ class DetectorParamsDialog(QDialog):
         d.threshold_adjust_step = self.cov_step_spin.value()
         d.enable_post_merge = self.post_merge_check.isChecked()
         if self.method_box is not None:
-            if self.method_box.currentIndex() == 1:
-                d.detection_method = "pattern"
-            else:
-                d.detection_method = "peaks"
+            d.detection_method = "advanced" if self.method_box.currentIndex() == 1 else "peaks"
         else:
-            d.detection_method = "pattern" if self.mode == "pattern" else "peaks"
+            d.detection_method = "advanced" if self.mode == "advanced" else "peaks"
         super().accept()
 
