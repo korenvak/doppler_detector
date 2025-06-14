@@ -9,8 +9,6 @@ from spectrogram_gui.utils.filter_utils import (
     apply_nlms,
     apply_ale,
     apply_wiener,
-    apply_lms,
-    apply_rls,
 )
 
 # Default frequency range (Hz)
