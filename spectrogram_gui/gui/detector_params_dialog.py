@@ -289,8 +289,12 @@ class DetectorParamsDialog(QDialog):
             row = self.layout.getWidgetPosition(widget)[0]
             if row < 0:
                 return
-            for col in range(self.layout.columnCount()):
-                item = self.layout.itemAtPosition(row, col)
+            for role in (
+                QFormLayout.LabelRole,
+                QFormLayout.FieldRole,
+                QFormLayout.SpanningRole,
+            ):
+                item = self.layout.itemAt(row, role)
                 if item and item.widget():
                     item.widget().setVisible(vis)
 
