@@ -5,7 +5,7 @@ from scipy.ndimage import gaussian_filter, median_filter, label, laplace, binary
 from scipy.signal import find_peaks, wiener
 from skimage.transform import probabilistic_hough_line
 from skimage.feature import hessian_matrix, hessian_matrix_eigvals
-from skimage.morphology import remove_small_objects
+from skimage.morphology import remove_small_objects, skeletonize
 # use your spectrogram and audio‐loading utils instead of soundfile + scipy.spectrogram
 from spectrogram_gui.utils.audio_utils import load_audio_with_filters
 from spectrogram_gui.utils.spectrogram_utils import compute_spectrogram as sg_compute_spec
@@ -272,7 +272,7 @@ class DopplerDetector(Detector):
         return mask
 
     def _ridge_detection(self, Sxx, sigma=3.0):
-        H = hessian_matrix(Sxx, sigma=sigma, order='rc')
+        H = hessian_matrix(Sxx, sigma=sigma, order='rc', use_gaussian_derivatives=False)
         ridges, _ = hessian_matrix_eigvals(H)
         thr = np.percentile(np.abs(ridges), 85)
         return np.abs(ridges) > thr
@@ -285,10 +285,14 @@ class DopplerDetector(Detector):
         i_min = max(i_min, 0)
         i_max = min(i_max, len(self.freqs) - 1)
         band = S[i_min:i_max + 1]
+        thr = np.percentile(band, self.adv_threshold_percentile)
+        mask = band > thr
         cfar_m = self._cfar(band)
         ridge_m = self._ridge_detection(band)
-        mask = binary_opening(cfar_m & ridge_m, iterations=1)
+        mask = mask & cfar_m & ridge_m
+        mask = binary_opening(mask, iterations=1)
         mask = remove_small_objects(mask.astype(bool), min_size=50)
+        mask = skeletonize(mask)
         lines = probabilistic_hough_line(
             mask.astype(np.uint8),
             threshold=10,
