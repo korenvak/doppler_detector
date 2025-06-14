@@ -18,10 +18,12 @@ class DetectorParamsDialog(QDialog):
 
         if self.mode == "both":
             self.method_box = QComboBox()
-            self.method_box.addItems(["Peaks", "Advanced"])
+            self.method_box.addItems(["Peaks", "Advanced", "Pattern"])
             method = getattr(detector, "detection_method", "peaks")
             if method == "advanced":
                 self.method_box.setCurrentIndex(1)
+            elif method == "pattern":
+                self.method_box.setCurrentIndex(2)
             layout.addRow("Detection Method:", self.method_box)
         else:
             self.method_box = None
@@ -246,10 +248,10 @@ class DetectorParamsDialog(QDialog):
     def update_visibility(self):
         if self.method_box is None:
             peaks = self.mode == "peaks"
-            advanced = self.mode == "advanced"
+            advanced = self.mode in ("advanced", "pattern")
         else:
             peaks = self.method_box.currentIndex() == 0
-            advanced = self.method_box.currentIndex() == 1
+            advanced = self.method_box.currentIndex() in (1, 2)
 
         peak_widgets = [
             self.power_thresh_spin,
@@ -338,6 +340,8 @@ class DetectorParamsDialog(QDialog):
         if self.method_box is not None:
             if self.method_box.currentIndex() == 1:
                 d.detection_method = "advanced"
+            elif self.method_box.currentIndex() == 2:
+                d.detection_method = "pattern"
             else:
                 d.detection_method = "peaks"
         else:

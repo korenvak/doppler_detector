@@ -420,6 +420,9 @@ class MainWindow(QMainWindow):
                 if self.detector.detection_method == "advanced":
                     tracks = self.detector.detect_tracks_advanced()
                     raw_tracks = self.detector.merge_tracks(tracks)
+                elif self.detector.detection_method == "pattern":
+                    tracks = self.detector.detect_tracks_pattern()
+                    raw_tracks = self.detector.merge_tracks(tracks)
                 else:
                     peaks  = self.detector.detect_peaks_per_frame()
                     tracks = self.detector.track_peaks_over_time(peaks)
@@ -428,6 +431,8 @@ class MainWindow(QMainWindow):
             else:
                 if self.detector.detection_method == "advanced":
                     raw_tracks = self.detector.run_advanced_detection(self.current_file)
+                elif self.detector.detection_method == "pattern":
+                    raw_tracks = self.detector.run_detection(self.current_file)
                 else:
                     raw_tracks = self.detector.run_detection(self.current_file)
 
