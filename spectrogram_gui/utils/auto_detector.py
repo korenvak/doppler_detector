@@ -69,6 +69,14 @@ class DopplerDetector(Detector):
         adv_min_object_size=30,
         adv_use_skeleton=True,
         adv_min_slope=0.3,
+        adv_threshold_method="percentile",
+        random_seed=0,
+        deterministic_hough=False,
+        use_median=False,
+        max_mask_coverage=0.25,
+        min_mask_coverage=0.05,
+        threshold_adjust_step=1.0,
+        enable_post_merge=True,
         fast_mode=False,
         use_tv_denoising=False,
         tv_denoising_weight=0.1,
@@ -112,6 +120,14 @@ class DopplerDetector(Detector):
         self.adv_min_object_size = adv_min_object_size
         self.adv_use_skeleton = adv_use_skeleton
         self.adv_min_slope = adv_min_slope
+        self.adv_threshold_method = adv_threshold_method
+        self.random_seed = random_seed
+        self.deterministic_hough = deterministic_hough
+        self.use_median = use_median
+        self.max_mask_coverage = max_mask_coverage
+        self.min_mask_coverage = min_mask_coverage
+        self.threshold_adjust_step = threshold_adjust_step
+        self.enable_post_merge = enable_post_merge
         self.fast_mode = fast_mode
         self.use_tv_denoising = use_tv_denoising
         self.tv_denoising_weight = tv_denoising_weight
@@ -458,25 +474,30 @@ class DopplerDetector(Detector):
         y, sr = self.load_audio(filepath)
         f, t, Sxx_norm, Sxx_filt = self.compute_spectrogram(y, sr, filepath)
         if self.detection_method == "pattern":
-            tracks = self.detect_tracks_pattern()
+            final = self.detect_tracks_pattern()
+            print(
+                f"[Detect] pattern pipeline {time.perf_counter()-start_t:.2f}s"
+            )
+            return final
         else:
             peaks = self.detect_peaks_per_frame()
             tracks = self.track_peaks_over_time(peaks)
-        tracks = self.merge_tracks(tracks)
-        # final filter
-        final = []
-        for tr in tracks:
-            if len(tr) < self.min_track_length_frames:
-                continue
-            f_idxs = [pt[1] for pt in tr]
-            powers = [Sxx_filt[fi, ti] for ti, fi in tr]
-            if np.mean(powers) < self.min_track_avg_power:
-                continue
-            if np.std(f[f_idxs]) > self.max_track_freq_std_hz:
-                continue
-            final.append(tr)
-        print(f"[Detect] full pipeline {time.perf_counter()-start_t:.2f}s")
-        return final
+            tracks = self.merge_tracks(tracks)
+            final = []
+            for tr in tracks:
+                if len(tr) < self.min_track_length_frames:
+                    continue
+                f_idxs = [pt[1] for pt in tr]
+                powers = [Sxx_filt[fi, ti] for ti, fi in tr]
+                if np.mean(powers) < self.min_track_avg_power:
+                    continue
+                if np.std(f[f_idxs]) > self.max_track_freq_std_hz:
+                    continue
+                final.append(tr)
+            print(
+                f"[Detect] full pipeline {time.perf_counter()-start_t:.2f}s"
+            )
+            return final
 
 
 class AdaptiveFilterDetector(DopplerDetector):
