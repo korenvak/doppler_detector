@@ -205,11 +205,25 @@ class MainWindow(QMainWindow):
         self.filter_btn.setIcon(qta.icon('fa5s.filter'))
         self.filter_btn.setPopupMode(QToolButton.InstantPopup)
         filter_menu = QMenu(self)
-        filter_menu.addAction("High-pass…",   lambda: self.open_filter_dialog("highpass"))
-        filter_menu.addAction("Low-pass…",    lambda: self.open_filter_dialog("lowpass"))
-        filter_menu.addAction("Band-pass…",   lambda: self.open_filter_dialog("bandpass"))
+        filter_menu.addAction("High-pass…", lambda: self.open_filter_dialog("highpass"))
+        filter_menu.addAction("Low-pass…", lambda: self.open_filter_dialog("lowpass"))
+        filter_menu.addAction("Band-pass…", lambda: self.open_filter_dialog("bandpass"))
         filter_menu.addSeparator()
-        filter_menu.addAction("Adaptive Filters…", lambda: CombinedFilterDialog(self).exec_())
+        adaptive_menu = QMenu("Adaptive", self)
+        for name in [
+            "NLMS",
+            "ALE",
+            "Wiener",
+            "Gaussian",
+            "Median",
+            "Gabor",
+            "TV Denoise 2D",
+        ]:
+            adaptive_menu.addAction(
+                f"{name}…",
+                lambda n=name: CombinedFilterDialog(self, n).exec_(),
+            )
+        filter_menu.addMenu(adaptive_menu)
         self.filter_btn.setMenu(filter_menu)
 
         # FFT, Gain, Undo
