@@ -36,9 +36,10 @@ def apply_lms(x: np.ndarray, mu: float = 0.01, filter_order: int = 32) -> np.nda
 
 @njit(nopython=True)
 def _ale_core(x: np.ndarray, delay: int, mu: float, order: int, slope: float) -> np.ndarray:
+    """Return the predicted component of ``x`` using an LMS adaptive filter."""
     n = len(x)
     w = np.zeros(order, dtype=np.float64)
-    y_pred = np.zeros(n, dtype=np.float64)
+    y = np.zeros(n, dtype=np.float64)
     pad = np.concatenate((np.zeros(delay + order + n), x))
     for i in range(n):
         shift = int(np.rint(i * slope))
@@ -50,8 +51,8 @@ def _ale_core(x: np.ndarray, delay: int, mu: float, order: int, slope: float) ->
         err = x[i] - pred
         for j in range(order):
             w[j] += 2 * mu * err * u[j]
-        y_pred[i] = pred
-    return y_pred
+        y[i] = pred
+    return y
 
 def apply_nlms(x: np.ndarray, mu: float = 0.01, filter_order: int = 32) -> np.ndarray:
     """
@@ -164,6 +165,11 @@ def apply_ale(
             x_out = x_out[:len(x)]
         else:
             x_out = np.pad(x_out, (0, len(x) - len(x_out)))
+        # normalize amplitude to input RMS to avoid vanishing output
+        in_rms = np.sqrt(np.mean(x ** 2))
+        out_rms = np.sqrt(np.mean(x_out ** 2)) + 1e-8
+        if out_rms > 0:
+            x_out *= in_rms / out_rms
         print(f"[ALE] freq-domain {time.perf_counter()-start_t:.2f}s")
         return x_out
 
