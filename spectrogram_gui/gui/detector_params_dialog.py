@@ -161,12 +161,33 @@ class DetectorParamsDialog(QDialog):
     def update_visibility(self):
         peaks = self.method_box.currentIndex() == 0
         advanced = self.method_box.currentIndex() == 1
-        for w in [self.peak_prom_label, self.peak_prom_spin,
-                  self.max_peaks_label, self.max_peaks_spin]:
+
+        peak_widgets = [
+            self.power_thresh_spin,
+            self.peak_prom_label,
+            self.peak_prom_spin,
+            self.max_gap_spin,
+            self.gap_power_spin,
+            self.gap_prom_spin2,
+            self.max_jump_spin,
+            self.gap_max_jump_spin,
+            self.max_peaks_label,
+            self.max_peaks_spin,
+        ]
+
+        adv_widgets = [
+            self.adv_thresh_label,
+            self.adv_thresh_spin,
+            self.adv_len_label,
+            self.adv_len_spin,
+            self.adv_gap_label,
+            self.adv_gap_spin,
+        ]
+
+        for w in peak_widgets:
             w.setVisible(peaks)
-        for w in [self.adv_thresh_label, self.adv_thresh_spin,
-                  self.adv_len_label, self.adv_len_spin,
-                  self.adv_gap_label, self.adv_gap_spin]:
+
+        for w in adv_widgets:
             w.setVisible(advanced)
 
     def accept(self):
