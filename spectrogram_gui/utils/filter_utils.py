@@ -49,6 +49,9 @@ def apply_ale(
     return_metrics: bool = False,
     forgetting_factor: Optional[float] = None,
     slope: float = 0.0,
+    freq_domain: bool = False,
+    n_fft: int = 1024,
+    hop_length: int = 512,
 ) -> Union[np.ndarray, Tuple]:
     """Adaptive Line Enhancer using an LMS filter.
 
@@ -122,6 +125,7 @@ def apply_ale(
                 filter_order=filter_order,
                 test_delays=test_delays,
                 slope=slope,
+                freq_domain=False,
             )
         Zxx_filt = out_mag * np.exp(1j * phase)
         _, x_out = istft(Zxx_filt, nperseg=n_fft, noverlap=n_fft - hop_length)

@@ -2,7 +2,7 @@
 
 from PyQt5.QtWidgets import (
     QDialog, QFormLayout, QSpinBox, QDoubleSpinBox,
-    QDialogButtonBox, QHBoxLayout, QComboBox
+    QDialogButtonBox, QComboBox, QLabel
 )
 from PyQt5.QtCore import Qt
 
@@ -46,12 +46,13 @@ class DetectorParamsDialog(QDialog):
         layout.addRow("Power Threshold:", self.power_thresh_spin)
 
         # 6) peak_prominence
+        self.peak_prom_label = QLabel("Peak Prominence:")
         self.peak_prom_spin = QDoubleSpinBox()
         self.peak_prom_spin.setRange(0.001, 1.00)
         self.peak_prom_spin.setSingleStep(0.001)
         self.peak_prom_spin.setDecimals(3)
         self.peak_prom_spin.setValue(detector.peak_prominence)
-        layout.addRow("Peak Prominence:", self.peak_prom_spin)
+        layout.addRow(self.peak_prom_label, self.peak_prom_spin)
 
         # 7) max_gap_frames
         self.max_gap_spin = QSpinBox()
@@ -88,10 +89,11 @@ class DetectorParamsDialog(QDialog):
         layout.addRow("Gap Max Jump [Hz]:", self.gap_max_jump_spin)
 
         # 12) max_peaks_per_frame
+        self.max_peaks_label = QLabel("Max Peaks/Frame:")
         self.max_peaks_spin = QSpinBox()
         self.max_peaks_spin.setRange(1, 100)
         self.max_peaks_spin.setValue(detector.max_peaks_per_frame)
-        layout.addRow("Max Peaks/Frame:", self.max_peaks_spin)
+        layout.addRow(self.max_peaks_label, self.max_peaks_spin)
 
         # 13) min_track_length_frames
         self.min_length_spin = QSpinBox()
@@ -128,16 +130,18 @@ class DetectorParamsDialog(QDialog):
         layout.addRow("Merge Max Freq Diff [Hz]:", self.merge_freq_diff_spin)
 
         # 18) Hough threshold
+        self.hough_thresh_label = QLabel("Hough Threshold:")
         self.hough_thresh_spin = QSpinBox()
         self.hough_thresh_spin.setRange(1, 1000)
         self.hough_thresh_spin.setValue(detector.hough_threshold)
-        layout.addRow("Hough Threshold:", self.hough_thresh_spin)
+        layout.addRow(self.hough_thresh_label, self.hough_thresh_spin)
 
         # 19) Hough theta steps
+        self.hough_steps_label = QLabel("Hough Theta Steps:")
         self.hough_steps_spin = QSpinBox()
         self.hough_steps_spin.setRange(10, 720)
         self.hough_steps_spin.setValue(detector.hough_theta_steps)
-        layout.addRow("Hough Theta Steps:", self.hough_steps_spin)
+        layout.addRow(self.hough_steps_label, self.hough_steps_spin)
 
 
         # OK / Cancel
@@ -145,6 +149,19 @@ class DetectorParamsDialog(QDialog):
         buttons.accepted.connect(self.accept)
         buttons.rejected.connect(self.reject)
         layout.addRow(buttons)
+
+        self.method_box.currentIndexChanged.connect(self.update_visibility)
+        self.update_visibility()
+
+    def update_visibility(self):
+        peaks = self.method_box.currentIndex() == 0
+        hough = self.method_box.currentIndex() == 2
+        for w in [self.peak_prom_label, self.peak_prom_spin,
+                  self.max_peaks_label, self.max_peaks_spin]:
+            w.setVisible(peaks)
+        for w in [self.hough_thresh_label, self.hough_thresh_spin,
+                  self.hough_steps_label, self.hough_steps_spin]:
+            w.setVisible(hough)
 
     def accept(self):
         d = self.detector
