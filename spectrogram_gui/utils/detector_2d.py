@@ -29,6 +29,7 @@ class DopplerDetector2D:
         max_peaks_per_frame=30,
         min_track_length_frames=10,
         min_track_avg_power=0.08,
+        max_track_freq_std_hz=70.0,
         merge_gap_frames=150,
         merge_max_freq_diff_hz=40.0,
         power_threshold=0.2,
@@ -44,6 +45,7 @@ class DopplerDetector2D:
         self.max_peaks_per_frame = max_peaks_per_frame
         self.min_track_length_frames = min_track_length_frames
         self.min_track_avg_power = min_track_avg_power
+        self.max_track_freq_std_hz = max_track_freq_std_hz
         self.merge_gap_frames = merge_gap_frames
         self.merge_max_freq_diff_hz = merge_max_freq_diff_hz
         self.power_threshold = power_threshold
@@ -254,6 +256,8 @@ class DopplerDetector2D:
                 continue
             tis = np.array([pt[0] for pt in tr])
             fis = np.array([pt[1] for pt in tr])
+            if np.std(self.freqs[fis]) > self.max_track_freq_std_hz:
+                continue
             powers = np.array([S[f_i, t_i] for t_i, f_i in tr])
             avg_pow = powers.mean()
             if avg_pow < self.min_track_avg_power:
