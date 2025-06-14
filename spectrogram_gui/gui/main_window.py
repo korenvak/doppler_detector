@@ -8,7 +8,8 @@ from PyQt5.QtWidgets import (
     QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
     QFileDialog, QPushButton, QLabel, QListWidget, QListWidgetItem,
     QSplitter, QMessageBox, QMenu, QApplication, QFrame,
-    QToolButton, QAction, QGraphicsDropShadowEffect, QShortcut
+    QToolButton, QAction, QGraphicsDropShadowEffect, QShortcut,
+    QProgressDialog
 )
 from PyQt5.QtGui import QKeySequence
 from PyQt5.QtCore import Qt, pyqtSignal, QSize, QEvent
@@ -423,12 +424,32 @@ class MainWindow(QMainWindow):
                 self.detector.times    = times
                 self.detector.Sxx_filt = Sxx
 
+                progress = QProgressDialog("Detecting tracks...", "", 0, len(times), self)
+                progress.setWindowModality(Qt.WindowModal)
+                progress.show()
+
                 peaks  = self.detector.detect_peaks_per_frame()
-                tracks = self.detector.track_peaks_over_time(peaks)
+                tracks = self.detector.track_peaks_over_time(peaks, progress_callback=progress.setValue)
                 raw_tracks = self.detector.merge_tracks(tracks)
+                progress.close()
 
             else:
-                raw_tracks = self.detector.run_detection(self.current_file)
+                y, sr = load_audio_with_filters(self.current_file)
+                freqs, times, Sxx, _ = compute_spectrogram(
+                    y, sr, self.current_file, params=self.spectrogram_params
+                )
+                self.detector.freqs = freqs
+                self.detector.times = times
+                self.detector.Sxx_filt = Sxx
+
+                progress = QProgressDialog("Detecting tracks...", "", 0, len(times), self)
+                progress.setWindowModality(Qt.WindowModal)
+                progress.show()
+
+                peaks = self.detector.detect_peaks_per_frame()
+                tracks = self.detector.track_peaks_over_time(peaks, progress_callback=progress.setValue)
+                raw_tracks = self.detector.merge_tracks(tracks)
+                progress.close()
 
             # 3) Convert index‐based tracks → time/freq arrays
             processed = []
@@ -491,7 +512,12 @@ class MainWindow(QMainWindow):
                     y, sr, self.current_file, params=self.spectrogram_params
                 )
 
-            tracks = self.detector2d.run_detection(Sxx, freqs, times)
+            progress = QProgressDialog("Detecting tracks...", "", 0, len(times), self)
+            progress.setWindowModality(Qt.WindowModal)
+            progress.show()
+
+            tracks = self.detector2d.run_detection(Sxx, freqs, times, progress_callback=progress.setValue)
+            progress.close()
             processed = []
             for tr in tracks:
                 t_idx = np.asarray([pt[0] for pt in tr], dtype=int)

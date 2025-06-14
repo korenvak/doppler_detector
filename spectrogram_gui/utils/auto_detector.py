@@ -1,6 +1,5 @@
 import numpy as np
 import time
-from tqdm import tqdm
 from scipy.signal import find_peaks
 # use your spectrogram and audio‐loading utils instead of soundfile + scipy.spectrogram
 from spectrogram_gui.utils.audio_utils import load_audio_with_filters
@@ -26,7 +25,7 @@ class Detector:
     def compute_spectrogram(self, y, sr, filepath):
         raise NotImplementedError
 
-    def run_detection(self, filepath):
+    def run_detection(self, filepath, progress_callback=None):
         raise NotImplementedError
 
 
@@ -101,7 +100,7 @@ class DopplerDetector(Detector):
         self.Sxx_filt = Sxx_filt
         return freqs, times, Sxx_norm, Sxx_filt
 
-    def detect_peaks_per_frame(self):
+    def detect_peaks_per_frame(self, progress_callback=None):
         """
         Find peaks in each time‐bin of the filtered spectrogram.
         """
@@ -115,7 +114,7 @@ class DopplerDetector(Detector):
 
         num_t = S.shape[1]
         peaks_per_frame = [[] for _ in range(num_t)]
-        for ti in tqdm(range(num_t), desc="Detecting peaks per frame"):
+        for ti in range(num_t):
             col = S[i_min : i_max + 1, ti]
             idxs, props = find_peaks(
                 col,
@@ -129,9 +128,13 @@ class DopplerDetector(Detector):
             else:
                 absolute = []
             peaks_per_frame[ti] = absolute
+            if progress_callback and ti % 10 == 0:
+                progress_callback(ti)
+        if progress_callback:
+            progress_callback(num_t)
         return peaks_per_frame
 
-    def track_peaks_over_time(self, peaks_per_frame):
+    def track_peaks_over_time(self, peaks_per_frame, progress_callback=None):
         """
         Link peaks frame‐to‐frame into continuous tracks.
         """
@@ -140,7 +143,7 @@ class DopplerDetector(Detector):
         finished = []
         active = []  # tuples: (last_ti, last_fi, gap, track)
 
-        for ti, frame_peaks in enumerate(tqdm(peaks_per_frame, desc="Tracking peaks")):
+        for ti, frame_peaks in enumerate(peaks_per_frame):
             used = set()
             new_active = []
 
@@ -198,9 +201,13 @@ class DopplerDetector(Detector):
             # prune
             active = [t for t in new_active if t[2] <= self.max_gap_frames]
             finished.extend([t[3] for t in new_active if t[2] > self.max_gap_frames])
+            if progress_callback and ti % 10 == 0:
+                progress_callback(ti)
 
         # finish leftovers
         finished.extend([t[3] for t in active])
+        if progress_callback:
+            progress_callback(len(peaks_per_frame))
 
         # filter out short / weak tracks
         valid = []
@@ -256,7 +263,7 @@ class DopplerDetector(Detector):
         y, sr = self.load_audio(filepath)
         f, t, Sxx_norm, Sxx_filt = self.compute_spectrogram(y, sr, filepath)
         peaks = self.detect_peaks_per_frame()
-        tracks = self.track_peaks_over_time(peaks)
+        tracks = self.track_peaks_over_time(peaks, progress_callback=progress_callback)
 
         tracks = self.merge_tracks(tracks)
 

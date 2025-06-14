@@ -1,5 +1,5 @@
 import numpy as np
-from skimage.feature import peak_local_max
+from scipy.ndimage import maximum_filter
 
 
 class DopplerDetector2D:
@@ -42,22 +42,21 @@ class DopplerDetector2D:
 
     # ----- Peak detection -----
     def detect_peaks_2d(self):
+        """Fast 2D local maxima detection using a small maximum filter."""
         S = self.Sxx_filt
-        coords = peak_local_max(
-            S,
-            min_distance=1,
-            threshold_abs=self.power_threshold,
-            footprint=None,
-            exclude_border=False,
-        )
+        freq_mask = (self.freqs >= self.freq_min) & (self.freqs <= self.freq_max)
+        sub = S[freq_mask]
+        local_max = maximum_filter(sub, size=3, mode="constant") == sub
+        mask = (sub >= self.power_threshold) & local_max
+        fr_idx, t_idx = np.nonzero(mask)
+        global_f = np.nonzero(freq_mask)[0][fr_idx]
+
         num_t = S.shape[1]
         peaks_per_frame = [[] for _ in range(num_t)]
         conf_per_frame = [[] for _ in range(num_t)]
-        for r, c in coords:
-            if self.freqs[r] < self.freq_min or self.freqs[r] > self.freq_max:
-                continue
-            peaks_per_frame[c].append(r)
-            conf_per_frame[c].append(S[r, c])
+        for f_i, t_i in zip(global_f, t_idx):
+            peaks_per_frame[t_i].append(f_i)
+            conf_per_frame[t_i].append(S[f_i, t_i])
 
         for ti in range(num_t):
             if len(peaks_per_frame[ti]) > self.max_peaks_per_frame:
@@ -81,7 +80,7 @@ class DopplerDetector2D:
         next_t = track[-1][0] + gap
         return np.polyval(coeffs, next_t)
 
-    def track_peaks_enhanced(self, peaks_per_frame, conf_per_frame):
+    def track_peaks_enhanced(self, peaks_per_frame, conf_per_frame, progress_callback=None):
         finished = []
         active = []
         for ti, (peaks, confs) in enumerate(zip(peaks_per_frame, conf_per_frame)):
@@ -118,8 +117,12 @@ class DopplerDetector2D:
                 key=lambda x: x[4],
                 reverse=True,
             )[:100]
+            if progress_callback and ti % 10 == 0:
+                progress_callback(ti)
         for a in active:
             finished.append(a[3])
+        if progress_callback:
+            progress_callback(len(peaks_per_frame))
         return finished
 
     # ----- Filtering -----
@@ -190,12 +193,12 @@ class DopplerDetector2D:
         return [e["track"] for e in merged]
 
     # ----- Pipeline -----
-    def run_detection(self, Sxx, freqs, times):
+    def run_detection(self, Sxx, freqs, times, progress_callback=None):
         self.Sxx_filt = Sxx
         self.freqs = freqs
         self.times = times
         peaks, confs = self.detect_peaks_2d()
-        raw = self.track_peaks_enhanced(peaks, confs)
+        raw = self.track_peaks_enhanced(peaks, confs, progress_callback=progress_callback)
         scored = self.filter_and_score_tracks(raw)
         final = self.merge_tracks_advanced(scored)
         return final
