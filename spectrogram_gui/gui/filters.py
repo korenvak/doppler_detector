@@ -44,6 +44,7 @@ class CombinedFilterDialog(QDialog):
             "Gaussian",
             "Median",
             "Gabor",
+            "TV Denoise",
         ])
         layout.addWidget(self.filter_box)
 
@@ -139,6 +140,18 @@ class CombinedFilterDialog(QDialog):
         w.addWidget(self.gabor_sigma_spin)
         self.stack.addWidget(gabor_widget)
 
+        # --- TV Denoise params ---
+        w = QHBoxLayout()
+        tv_widget = QWidget()
+        tv_widget.setLayout(w)
+        w.addWidget(QLabel("Weight:"))
+        self.tv_weight_spin = QDoubleSpinBox()
+        self.tv_weight_spin.setRange(0.01, 1.0)
+        self.tv_weight_spin.setSingleStep(0.01)
+        self.tv_weight_spin.setValue(0.1)
+        w.addWidget(self.tv_weight_spin)
+        self.stack.addWidget(tv_widget)
+
         layout.addWidget(self.stack)
 
         self.filter_box.currentIndexChanged.connect(self.stack.setCurrentIndex)
@@ -209,6 +222,9 @@ class CombinedFilterDialog(QDialog):
             out = apply_median(out, size=self.median_spin.value())
         elif filt == "Gabor":
             out = apply_gabor(out, freq=self.gabor_freq_spin.value(), sigma=self.gabor_sigma_spin.value())
+        elif filt == "TV Denoise":
+            from spectrogram_gui.utils.filter_utils import apply_tv_denoising
+            out = apply_tv_denoising(out, weight=self.tv_weight_spin.value())
         
         # 5) write back & replot
         new_wave = wave.copy()

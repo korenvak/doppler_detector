@@ -371,7 +371,7 @@ class MainWindow(QMainWindow):
             return
 
         # 1) Show parameters dialog
-        dlg = DetectorParamsDialog(self, detector=self.detector, mode="peaks")
+        dlg = DetectorParamsDialog(self, detector=self.detector, mode="both")
         if dlg.exec_() != dlg.Accepted:
             return
 
