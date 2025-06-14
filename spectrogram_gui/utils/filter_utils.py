@@ -18,21 +18,6 @@ except Exception:  # pragma: no cover - numba may not be installed
 
         return wrapper
 
-def apply_lms(x: np.ndarray, mu: float = 0.01, filter_order: int = 32) -> np.ndarray:
-    """Simple LMS adaptive filter returning the error signal."""
-    x = x.astype(np.float64, copy=False)
-    n = len(x)
-    w = np.zeros(filter_order, dtype=np.float64)
-    y = np.zeros(n, dtype=np.float64)
-    x_pad = np.concatenate([np.zeros(filter_order), x])
-    for i in range(n):
-        u = x_pad[i : i + filter_order][::-1]
-        y_pred = np.dot(w, u)
-        e = x[i] - y_pred
-        w += 2 * mu * e * u
-        y[i] = e
-    return y
-
 
 @njit(nopython=True)
 def _ale_core(x: np.ndarray, delay: int, mu: float, order: int, slope: float) -> np.ndarray:
@@ -240,27 +225,6 @@ def apply_ale(
     result = x - best_y if return_error else best_y
     return result if not return_metrics else (result, best_delay, metrics[best_idx])
 
-def apply_rls(x: np.ndarray, forgetting_factor: float = 0.99, filter_order: int = 32) -> np.ndarray:
-    """Recursive Least Squares adaptive filter returning the error signal."""
-    x = x.astype(np.float64, copy=False)
-    n = len(x)
-    delta = 1.0
-    P = np.eye(filter_order, dtype=np.float64) / delta
-    w = np.zeros(filter_order, dtype=np.float64)
-    y = np.zeros(n, dtype=np.float64)
-    x_pad = np.concatenate([np.zeros(filter_order), x])
-    eps = 1e-8
-    for i in range(n):
-        u = x_pad[i : i + filter_order][::-1]
-        Pi_u = P.dot(u)
-        denom = forgetting_factor + np.dot(u, Pi_u) + eps
-        k = Pi_u / denom
-        y_pred = np.dot(w, u)
-        e = x[i] - y_pred
-        w += k * e
-        P = (P - np.outer(k, Pi_u)) / forgetting_factor
-        y[i] = e
-    return y
 
 def apply_wiener(x: np.ndarray, noise_db: float = -20, window_size: int = 1024, overlap: int = 512) -> np.ndarray:
     """
@@ -345,3 +309,72 @@ def apply_tv_denoising_2d(Sxx: np.ndarray, weight: float = 0.1) -> np.ndarray:
     from skimage.restoration import denoise_tv_chambolle
 
     return denoise_tv_chambolle(Sxx, weight=weight, channel_axis=None)
+
+
+def apply_wiener_adaptive(x: np.ndarray, window_size: int = 1024) -> np.ndarray:
+    """Wiener filter with per-frequency noise estimation."""
+    f, t, Zxx = stft(x, nperseg=window_size)
+    Sxx = np.abs(Zxx) ** 2
+    noise = np.zeros_like(Sxx)
+    for i in range(Sxx.shape[0]):
+        vals = np.sort(Sxx[i])
+        noise[i] = np.median(vals[: max(1, len(vals)//4)])
+    gain = np.maximum(Sxx / (Sxx + noise), 0.1)
+    Zxx_f = Zxx * gain
+    _, out = istft(Zxx_f, nperseg=window_size)
+    if len(out) > len(x):
+        out = out[: len(x)]
+    else:
+        out = np.pad(out, (0, len(x) - len(out)))
+    return out
+
+
+def apply_tv_denoising_doppler(
+    Sxx: np.ndarray,
+    weight_freq: float = 0.01,
+    weight_time: float = 0.001,
+    preserve_edges: bool = True,
+) -> np.ndarray:
+    """TV denoising that preserves Doppler tracks."""
+    from skimage.restoration import denoise_tv_chambolle
+    from skimage.filters import sobel
+
+    if preserve_edges:
+        edges = sobel(np.log1p(Sxx))
+        edge_mask = edges > np.percentile(edges, 90)
+        adaptive = np.where(edge_mask, weight_freq * 0.1, weight_freq)
+        out = np.zeros_like(Sxx)
+        for i in range(Sxx.shape[0]):
+            out[i] = denoise_tv_chambolle(
+                Sxx[i], weight=float(adaptive[i].mean())
+            )
+        return out
+    return denoise_tv_chambolle(Sxx, weight=weight_freq, channel_axis=None)
+
+
+def apply_ale_2d_doppler(
+    Sxx: np.ndarray,
+    track_width: int = 5,
+    delay: int = 3,
+    mu: float = 0.01,
+    filter_order: int = 32,
+) -> np.ndarray:
+    """Apply ALE over neighbouring frequency bins to keep Doppler coherence."""
+    half = track_width // 2
+    weights = np.exp(-0.5 * (np.arange(track_width) - half) ** 2)
+    weights /= weights.sum()
+    padded = np.pad(Sxx, ((half, half), (0, 0)), mode="reflect")
+    out = np.zeros_like(Sxx)
+    for i in range(Sxx.shape[0]):
+        win = padded[i : i + track_width]
+        avg = np.average(win, axis=0, weights=weights)
+        filt = apply_ale(
+            avg,
+            delay=delay,
+            mu=mu,
+            filter_order=filter_order,
+            freq_domain=False,
+            return_error=False,
+        )
+        out[i] = filt
+    return out
