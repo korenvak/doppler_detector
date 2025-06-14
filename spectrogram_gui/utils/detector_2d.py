@@ -45,7 +45,6 @@ class DopplerDetector2D:
         """Find local maxima in the entire spectrogram."""
         S = self.Sxx_filt
 
-        # candidate maxima using a 3x3 footprint; reflect to avoid edge bias
         coords = peak_local_max(
             S,
             footprint=np.ones((3, 3)),
@@ -53,34 +52,41 @@ class DopplerDetector2D:
             threshold_rel=self.peak_prominence,
             exclude_border=1,
         )
+        if coords.size == 0:
+            return [[] for _ in range(S.shape[1])], [[] for _ in range(S.shape[1])]
 
-        num_t = S.shape[1]
-        peaks_per_frame = [[] for _ in range(num_t)]
-        conf_per_frame = [[] for _ in range(num_t)]
+        fr_idx = coords[:, 0]
+        t_idx = coords[:, 1]
 
-        for r, c in coords:
-            freq_idx = r
-            freq_val = self.freqs[freq_idx]
+        mask = (
+            (self.freqs[fr_idx] >= self.freq_min)
+            & (self.freqs[fr_idx] <= self.freq_max)
+        )
+        above_idx = np.clip(fr_idx - 1, 0, S.shape[0] - 1)
+        below_idx = np.clip(fr_idx + 1, 0, S.shape[0] - 1)
+        prominence = S[fr_idx, t_idx] - np.maximum(S[above_idx, t_idx], S[below_idx, t_idx])
+        mask &= prominence >= self.peak_prominence
 
-            # discard frequencies outside the user-specified band
-            if freq_val < self.freq_min or freq_val > self.freq_max:
-                continue
+        fr_idx = fr_idx[mask]
+        t_idx = t_idx[mask]
+        if fr_idx.size == 0:
+            return [[] for _ in range(S.shape[1])], [[] for _ in range(S.shape[1])]
 
-            # compute prominence vs. immediate frequency neighbours
-            above = S[freq_idx - 1, c] if freq_idx > 0 else S[freq_idx, c]
-            below = S[freq_idx + 1, c] if freq_idx < S.shape[0] - 1 else S[freq_idx, c]
-            if S[freq_idx, c] - max(above, below) < self.peak_prominence:
-                continue
+        conf = S[fr_idx, t_idx]
 
-            peaks_per_frame[c].append(freq_idx)
-            conf_per_frame[c].append(S[freq_idx, c])
+        order = np.lexsort((-conf, t_idx))
+        fr_idx = fr_idx[order]
+        t_idx = t_idx[order]
+        conf = conf[order]
 
-        # limit number of peaks per time frame
-        for ti in range(num_t):
-            if len(peaks_per_frame[ti]) > self.max_peaks_per_frame:
-                order = np.argsort(conf_per_frame[ti])[::-1][: self.max_peaks_per_frame]
-                peaks_per_frame[ti] = [peaks_per_frame[ti][i] for i in order]
-                conf_per_frame[ti] = [conf_per_frame[ti][i] for i in order]
+        peaks_per_frame = [[] for _ in range(S.shape[1])]
+        conf_per_frame = [[] for _ in range(S.shape[1])]
+
+        unique_t, start, counts = np.unique(t_idx, return_index=True, return_counts=True)
+        for t, s, cnt in zip(unique_t, start, counts):
+            sel = slice(s, s + min(cnt, self.max_peaks_per_frame))
+            peaks_per_frame[t] = fr_idx[sel].tolist()
+            conf_per_frame[t] = conf[sel].tolist()
 
         return peaks_per_frame, conf_per_frame
 
