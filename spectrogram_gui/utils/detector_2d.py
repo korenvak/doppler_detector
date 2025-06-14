@@ -1,6 +1,18 @@
 import numpy as np
 from skimage.feature import peak_local_max
 
+try:
+    from numba import njit
+    NUMBA_AVAILABLE = True
+except Exception:  # pragma: no cover - numba may not be installed
+    NUMBA_AVAILABLE = False
+
+    def njit(*args, **kwargs):  # type: ignore
+        def wrapper(func):
+            return func
+
+        return wrapper
+
 
 class DopplerDetector2D:
     """Doppler track detector using 2D peak picking"""
@@ -82,70 +94,92 @@ class DopplerDetector2D:
         peaks_per_frame = [[] for _ in range(S.shape[1])]
         conf_per_frame = [[] for _ in range(S.shape[1])]
 
-        unique_t, start, counts = np.unique(t_idx, return_index=True, return_counts=True)
-        for t, s, cnt in zip(unique_t, start, counts):
-            sel = slice(s, s + min(cnt, self.max_peaks_per_frame))
-            peaks_per_frame[t] = fr_idx[sel].tolist()
-            conf_per_frame[t] = conf[sel].tolist()
+        last_t = -1
+        count = 0
+        for f, t, c in zip(fr_idx, t_idx, conf):
+            if t != last_t:
+                last_t = t
+                count = 0
+            if count < self.max_peaks_per_frame:
+                peaks_per_frame[t].append(f)
+                conf_per_frame[t].append(c)
+                count += 1
 
         return peaks_per_frame, conf_per_frame
 
     # ----- Tracking -----
-    def predict_next_position(self, track, gap):
-        if len(track) < 3:
-            if len(track) >= 2:
-                t0, f0 = track[-1]
-                t1, f1 = track[-2]
-                vel = (self.freqs[f0] - self.freqs[f1]) / (t0 - t1)
-                return self.freqs[f0] + vel * gap
-            return self.freqs[track[-1][1]]
-        tis = np.array([pt[0] for pt in track[-5:]])
-        fis = np.array([self.freqs[pt[1]] for pt in track[-5:]])
-        coeffs = np.polyfit(tis, fis, 2)
-        next_t = track[-1][0] + gap
-        return np.polyval(coeffs, next_t)
+    def predict_next_position(self, last_f, prev_f, last_t, prev_t, gap):
+        vel = (self.freqs[last_f] - self.freqs[prev_f]) / max(last_t - prev_t, 1)
+        return self.freqs[last_f] + vel * gap
+
+    def _predict_positions(self, last_f, prev_f, last_t, prev_t, gaps):
+        last_f = np.asarray(last_f)
+        prev_f = np.asarray(prev_f)
+        last_t = np.asarray(last_t)
+        prev_t = np.asarray(prev_t)
+        gaps = np.asarray(gaps)
+        vel = (self.freqs[last_f] - self.freqs[prev_f]) / np.maximum(last_t - prev_t, 1)
+        return self.freqs[last_f] + vel * gaps
 
     def track_peaks_enhanced(self, peaks_per_frame, conf_per_frame, progress_callback=None):
         finished = []
-        active = []
+        active = []  # (last_t, last_f, prev_t, prev_f, gap, trace, conf)
+
         for ti, (peaks, confs) in enumerate(zip(peaks_per_frame, conf_per_frame)):
-            used = set()
+            peaks_arr = np.asarray(peaks, dtype=np.int64)
+            confs_arr = np.asarray(confs, dtype=np.float64)
+            used = np.zeros(len(peaks_arr), dtype=bool)
             new_active = []
-            for last_t, last_f, gap, tr, tr_conf in active:
-                if gap > self.max_gap_frames:
-                    finished.append(tr)
-                    continue
-                pred_freq = self.predict_next_position(tr, gap + 1)
-                best = None
-                best_score = -np.inf
-                for idx, f_idx in enumerate(peaks):
-                    if idx in used:
+
+            if active and len(peaks_arr):
+                last_t = np.array([a[0] for a in active])
+                last_f = np.array([a[1] for a in active])
+                prev_t = np.array([a[2] for a in active])
+                prev_f = np.array([a[3] for a in active])
+                gaps = np.array([a[4] for a in active])
+                traces = [a[5] for a in active]
+                conf_tr = np.array([a[6] for a in active])
+
+                pred = self._predict_positions(last_f, prev_f, last_t, prev_t, gaps + 1)
+                peak_freqs = self.freqs[peaks_arr]
+                diff = np.abs(peak_freqs[None, :] - pred[:, None])
+                allowed = diff <= self.max_freq_jump_hz * (1 + gaps[:, None] * 0.2)
+                scores = np.where(allowed, confs_arr[None, :] / (1 + diff / 10), -np.inf)
+                best_idx = np.argmax(scores, axis=1)
+                best_score = scores[np.arange(scores.shape[0]), best_idx]
+                order = np.argsort(-best_score)
+
+                for ai in order:
+                    sc = best_score[ai]
+                    if sc == -np.inf:
+                        new_active.append((last_t[ai], last_f[ai], prev_t[ai], prev_f[ai], gaps[ai] + 1, traces[ai], conf_tr[ai] * 0.9))
                         continue
-                    freq_val = self.freqs[f_idx]
-                    if abs(freq_val - pred_freq) <= self.max_freq_jump_hz * (1 + gap * 0.2):
-                        score = confs[idx] / (1 + abs(freq_val - pred_freq) / 10)
-                        if score > best_score:
-                            best_score = score
-                            best = idx
-                if best is not None:
-                    used.add(best)
-                    new_tr = tr + [(ti, peaks[best])]
-                    new_conf = tr_conf * 0.9 + confs[best] * 0.1
-                    new_active.append((ti, peaks[best], 0, new_tr, new_conf))
+                    pk = best_idx[ai]
+                    if used[pk]:
+                        new_active.append((last_t[ai], last_f[ai], prev_t[ai], prev_f[ai], gaps[ai] + 1, traces[ai], conf_tr[ai] * 0.9))
+                        continue
+                    used[pk] = True
+                    tr = traces[ai] + [(ti, peaks_arr[pk])]
+                    new_active.append((ti, peaks_arr[pk], last_t[ai], last_f[ai], 0, tr, conf_tr[ai] * 0.9 + confs_arr[pk] * 0.1))
+
+            for idx, f_idx in enumerate(peaks_arr):
+                if not used[idx]:
+                    new_active.append((ti, f_idx, ti, f_idx, 0, [(ti, f_idx)], confs_arr[idx]))
+
+            still_active = []
+            for a in new_active:
+                if a[4] > self.max_gap_frames:
+                    finished.append(a[5])
                 else:
-                    new_active.append((last_t, last_f, gap + 1, tr, tr_conf * 0.9))
-            for idx, f_idx in enumerate(peaks):
-                if idx not in used:
-                    new_active.append((ti, f_idx, 0, [(ti, f_idx)], confs[idx]))
-            active = sorted(
-                [a for a in new_active if a[2] <= self.max_gap_frames],
-                key=lambda x: x[4],
-                reverse=True,
-            )[:100]
+                    still_active.append(a)
+
+            active = sorted(still_active, key=lambda x: x[6], reverse=True)[:100]
+
             if progress_callback and ti % 10 == 0:
                 progress_callback(ti)
+
         for a in active:
-            finished.append(a[3])
+            finished.append(a[5])
         if progress_callback:
             progress_callback(len(peaks_per_frame))
         return finished
