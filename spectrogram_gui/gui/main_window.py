@@ -218,6 +218,8 @@ class MainWindow(QMainWindow):
             "Median",
             "Gabor",
             "TV Denoise 2D",
+            "Track Follow",
+            "Enhance Doppler",
         ]:
             adaptive_menu.addAction(
                 f"{name}…",

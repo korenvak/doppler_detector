@@ -7,6 +7,7 @@ from PyQt5.QtWidgets import (
     QDialogButtonBox,
     QDoubleSpinBox,
     QSpinBox,
+    QCheckBox,
     QMessageBox,
     QStackedWidget,
     QWidget,
@@ -44,6 +45,8 @@ class CombinedFilterDialog(QDialog):
             "Median",
             "Gabor",
             "TV Denoise 2D",
+            "Track Follow",
+            "Enhance Doppler",
         ])
         layout.addWidget(self.filter_box)
 
@@ -151,6 +154,27 @@ class CombinedFilterDialog(QDialog):
         w.addWidget(self.tv_weight_spin)
         self.stack.addWidget(tv_widget)
 
+        # --- Track Follow params ---
+        w = QHBoxLayout()
+        tf_widget = QWidget()
+        tf_widget.setLayout(w)
+        w.addWidget(QLabel("Factor:"))
+        self.track_factor_spin = QDoubleSpinBox()
+        self.track_factor_spin.setRange(1.0, 5.0)
+        self.track_factor_spin.setSingleStep(0.1)
+        self.track_factor_spin.setValue(2.0)
+        w.addWidget(self.track_factor_spin)
+        self.stack.addWidget(tf_widget)
+
+        # --- Enhance Doppler params ---
+        w = QHBoxLayout()
+        ed_widget = QWidget()
+        ed_widget.setLayout(w)
+        self.enhance_track_chk = QCheckBox("Detect Tracks")
+        self.enhance_track_chk.setChecked(True)
+        w.addWidget(self.enhance_track_chk)
+        self.stack.addWidget(ed_widget)
+
         layout.addWidget(self.stack)
 
         self.filter_box.currentIndexChanged.connect(self.stack.setCurrentIndex)
@@ -232,6 +256,24 @@ class CombinedFilterDialog(QDialog):
         elif filt == "TV Denoise 2D":
             from spectrogram_gui.utils.filter_utils import apply_tv_denoising
             out = apply_tv_denoising(out, weight=self.tv_weight_spin.value())
+        elif filt == "Track Follow":
+            from spectrogram_gui.utils.filter_utils import enhance_doppler_tracks
+            out = enhance_doppler_tracks(
+                out,
+                fs=sr,
+                method="track_only",
+                track_detection=True,
+                enhancement_factor=self.track_factor_spin.value(),
+            )
+        elif filt == "Enhance Doppler":
+            from spectrogram_gui.utils.filter_utils import enhance_doppler_tracks
+            out = enhance_doppler_tracks(
+                out,
+                fs=sr,
+                method="combined",
+                track_detection=self.enhance_track_chk.isChecked(),
+                enhancement_factor=self.track_factor_spin.value(),
+            )
         
         # 5) write back & replot
         new_wave = wave.copy()
