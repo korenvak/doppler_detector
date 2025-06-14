@@ -188,6 +188,11 @@ class MainWindow(QMainWindow):
         self.auto_detect_btn.setToolTip("Open parameters and run auto-detection")
         self.auto_detect_btn.clicked.connect(self.run_detection)
 
+        self.adv_detect_btn = QPushButton("Advanced Detect")
+        self.adv_detect_btn.setIcon(qta.icon('fa5s.magic'))
+        self.adv_detect_btn.setToolTip("Run advanced detection directly")
+        self.adv_detect_btn.clicked.connect(self.run_advanced_doppler_detection)
+
         # Mark Event
         self.mark_event_btn = QPushButton("Mark Event")
         self.mark_event_btn.setIcon(qta.icon('fa5s.map-marker-alt'))
@@ -230,6 +235,7 @@ class MainWindow(QMainWindow):
             self.set_csv_btn,
             self.settings_btn,
             self.auto_detect_btn,
+            self.adv_detect_btn,
         ]:
             top_bar.addWidget(w)
 
@@ -262,6 +268,8 @@ class MainWindow(QMainWindow):
         # Info label
         self.info_label = QLabel("No file loaded")
         right_layout.addWidget(self.info_label)
+        self.status_label = QLabel("")
+        right_layout.addWidget(self.status_label)
 
         # Spectrogram canvas
         self.canvas_container = QFrame()
@@ -423,9 +431,35 @@ class MainWindow(QMainWindow):
             self.add_undo_action(("detection", None))
             duration = (datetime.now() - start_time).total_seconds()
             self.param_panel.update_stats(len(processed), self.detector.detection_method, duration)
+            self.status_label.setText(
+                f"{self.detector.detection_method.capitalize()} detection: {len(processed)} tracks found."
+            )
 
         except Exception as e:
             QMessageBox.warning(self, "Auto-Detect Error", str(e))
+
+    def run_advanced_doppler_detection(self):
+        """Run detection directly in advanced mode without a parameter dialog."""
+        if not self.current_file:
+            return
+
+        self.detector.detection_method = "advanced"
+        start_time = datetime.now()
+        raw_tracks = self.detector.run_advanced_detection(self.current_file)
+        processed = []
+        for tr in raw_tracks:
+            t_idx = np.array([pt[0] for pt in tr], dtype=int)
+            f_idx = np.array([pt[1] for pt in tr], dtype=int)
+            times_arr = self.detector.times[t_idx]
+            freqs_arr = self.detector.freqs[f_idx]
+            processed.append((times_arr, freqs_arr))
+        self.canvas.clear_auto_tracks()
+        self.canvas.plot_auto_tracks(processed)
+        self.detection_manager.record(self.canvas.auto_tracks_items.copy())
+        self.add_undo_action(("detection", None))
+        dur = (datetime.now() - start_time).total_seconds()
+        self.param_panel.update_stats(len(processed), "advanced", dur)
+        self.status_label.setText(f"Advanced detection: {len(processed)} tracks found.")
 
     def select_folder(self):
         folder = QFileDialog.getExistingDirectory(self, "Select Folder")

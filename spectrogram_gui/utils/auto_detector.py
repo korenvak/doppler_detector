@@ -55,9 +55,9 @@ class DopplerDetector(Detector):
         smooth_sigma=1.5,
         median_filter_size=(3, 1),
         detection_method="peaks",
-        adv_threshold_percentile=90,
-        adv_min_line_length=50,
-        adv_line_gap=10,
+        adv_threshold_percentile=85,
+        adv_min_line_length=40,
+        adv_line_gap=8,
         fast_mode=False,
     ):
         # detection parameters
@@ -286,10 +286,16 @@ class DopplerDetector(Detector):
         i_max = min(i_max, len(self.freqs) - 1)
         band = S[i_min:i_max + 1]
         thr = np.percentile(band, self.adv_threshold_percentile)
-        mask = band > thr
+        base_m = band > thr
         cfar_m = self._cfar(band)
         ridge_m = self._ridge_detection(band)
-        mask = mask & cfar_m & ridge_m
+        mask = base_m & (cfar_m | ridge_m)
+        print(
+            "Base:", base_m.sum(),
+            "CFAR:", cfar_m.sum(),
+            "Ridge:", ridge_m.sum(),
+            "Combined:", mask.sum(),
+        )
         mask = binary_opening(mask, iterations=1)
         mask = remove_small_objects(mask.astype(bool), min_size=50)
         mask = skeletonize(mask)

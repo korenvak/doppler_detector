@@ -158,6 +158,7 @@ class DetectorParamsDialog(QDialog):
         self.method_box.currentIndexChanged.connect(self.update_visibility)
         self.update_visibility()
 
+
     def update_visibility(self):
         peaks = self.method_box.currentIndex() == 0
         advanced = self.method_box.currentIndex() == 1
