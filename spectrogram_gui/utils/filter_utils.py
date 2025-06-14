@@ -1,9 +1,22 @@
 # File: filter_utils.py
 
 import numpy as np
+import time
 from scipy.signal import stft, istft, butter, sosfilt
 from scipy.ndimage import gaussian_filter1d, median_filter
 from typing import Optional, List, Union, Tuple
+
+try:
+    from numba import njit
+    NUMBA_AVAILABLE = True
+except Exception:  # pragma: no cover - numba may not be installed
+    NUMBA_AVAILABLE = False
+
+    def njit(*args, **kwargs):  # type: ignore
+        def wrapper(func):
+            return func
+
+        return wrapper
 
 def apply_lms(x: np.ndarray, mu: float = 0.01, filter_order: int = 32) -> np.ndarray:
     """Simple LMS adaptive filter returning the error signal."""
@@ -19,6 +32,26 @@ def apply_lms(x: np.ndarray, mu: float = 0.01, filter_order: int = 32) -> np.nda
         w += 2 * mu * e * u
         y[i] = e
     return y
+
+
+@njit(nopython=True)
+def _ale_core(x: np.ndarray, delay: int, mu: float, order: int, slope: float) -> np.ndarray:
+    n = len(x)
+    w = np.zeros(order, dtype=np.float64)
+    y_pred = np.zeros(n, dtype=np.float64)
+    pad = np.concatenate((np.zeros(delay + order + n), x))
+    for i in range(n):
+        shift = int(np.rint(i * slope))
+        start = i + delay + shift
+        u = pad[start : start + order][::-1]
+        pred = 0.0
+        for j in range(order):
+            pred += w[j] * u[j]
+        err = x[i] - pred
+        for j in range(order):
+            w[j] += 2 * mu * err * u[j]
+        y_pred[i] = pred
+    return y_pred
 
 def apply_nlms(x: np.ndarray, mu: float = 0.01, filter_order: int = 32) -> np.ndarray:
     """
@@ -52,6 +85,7 @@ def apply_ale(
     freq_domain: bool = False,
     n_fft: int = 1024,
     hop_length: int = 512,
+    fast_mode: bool = False,
 ) -> Union[np.ndarray, Tuple]:
     """Adaptive Line Enhancer using an LMS filter.
 
@@ -68,8 +102,8 @@ def apply_ale(
         Order of the adaptive filter.
     test_delays : int or List[int], optional
         Range of delays to evaluate when ``delay`` is ``None``.  If an integer
-        is provided, delays ``1..test_delays`` are evaluated.  Defaults to
-        ``1..10``.
+        is provided, delays ``1..test_delays`` are evaluated. Defaults to
+        ``2..4`` for faster operation.
     return_all : bool
         If ``True``, return a list of all predictions for each tested delay.
     return_metrics : bool
@@ -86,6 +120,8 @@ def apply_ale(
         FFT size when ``freq_domain`` is ``True``. Default is ``1024``.
     hop_length : int, optional
         Hop size when ``freq_domain`` is ``True``. Default is ``512``.
+    fast_mode : bool, optional
+        If ``True``, skip delay search and use ``delay`` or 3 by default.
 
     Returns
     -------
@@ -96,21 +132,15 @@ def apply_ale(
     """
 
     def _ale_1d(sig: np.ndarray, d: int) -> np.ndarray:
-        """Run ALE on a single 1-D signal for a given delay."""
-        n_local = len(sig)
-        w = np.zeros(filter_order, dtype=np.float64)
-        y_pred = np.zeros(n_local, dtype=np.float64)
-        x_pad = np.concatenate([np.zeros(d + filter_order + n_local), sig])
-        for i in range(n_local):
-            shift = int(round(i * slope))
-            u = x_pad[i + d + shift : i + d + shift + filter_order][::-1]
-            pred = np.dot(w, u)
-            e = sig[i] - pred
-            w += 2 * mu * e * u
-            y_pred[i] = pred
-        return y_pred
+        return _ale_core(sig, d, mu, filter_order, slope)
 
     x = x.astype(np.float64, copy=False)
+
+    if len(x) > 500000:
+        print("[ALE] Input too long, skipping enhancement")
+        return x
+
+    start_t = time.perf_counter()
 
     if freq_domain:
         f, t, Zxx = stft(x, nperseg=n_fft, noverlap=n_fft - hop_length)
@@ -126,6 +156,7 @@ def apply_ale(
                 test_delays=test_delays,
                 slope=slope,
                 freq_domain=False,
+                fast_mode=fast_mode,
             )
         Zxx_filt = out_mag * np.exp(1j * phase)
         _, x_out = istft(Zxx_filt, nperseg=n_fft, noverlap=n_fft - hop_length)
@@ -133,9 +164,16 @@ def apply_ale(
             x_out = x_out[:len(x)]
         else:
             x_out = np.pad(x_out, (0, len(x) - len(x_out)))
+        print(f"[ALE] freq-domain {time.perf_counter()-start_t:.2f}s")
         return x_out
 
     n = len(x)
+
+    if fast_mode:
+        d = delay if delay is not None else 3
+        best_y = _ale_1d(x, d)
+        print(f"[ALE] fast mode delay={d} took {time.perf_counter()-start_t:.2f}s")
+        return best_y
 
     if delay is not None:
         # Single delay case
@@ -152,7 +190,7 @@ def apply_ale(
 
     # Search over multiple delays for best energy
     if test_delays is None:
-        delays = list(range(1, 11))
+        delays = list(range(2, 5))
     elif isinstance(test_delays, int):
         delays = list(range(1, test_delays + 1))
     else:
@@ -178,6 +216,7 @@ def apply_ale(
     if return_all:
         return best_y, best_delay, all_y, metrics if return_metrics else None
 
+    print(f"[ALE] processed in {time.perf_counter()-start_t:.2f}s")
     return best_y if not return_metrics else (best_y, best_delay, metrics[best_idx])
 
 def apply_rls(x: np.ndarray, forgetting_factor: float = 0.99, filter_order: int = 32) -> np.ndarray:

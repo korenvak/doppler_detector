@@ -1,4 +1,5 @@
 import numpy as np
+import time
 from tqdm import tqdm
 from scipy.ndimage import gaussian_filter, median_filter, label
 from scipy.signal import find_peaks
@@ -53,6 +54,7 @@ class DopplerDetector(Detector):
         detection_method="peaks",
         hough_threshold=50,
         hough_theta_steps=180,
+        fast_mode=False,
     ):
         # detection parameters
         self.freq_min = freq_min
@@ -75,6 +77,7 @@ class DopplerDetector(Detector):
         self.detection_method = detection_method
         self.hough_threshold = hough_threshold
         self.hough_theta_steps = hough_theta_steps
+        self.fast_mode = fast_mode
 
         # will be set in compute_spectrogram
         self.freqs = None
@@ -246,8 +249,13 @@ class DopplerDetector(Detector):
 
     def detect_tracks_by_threshold(self):
         """Detect tracks using simple thresholded connected components."""
-        S = self.Sxx_filt
-        mask = S >= self.power_threshold
+        start_t = time.perf_counter()
+        S = np.log1p(self.Sxx_filt)
+        thr = np.percentile(S, (1 - self.power_threshold) * 100)
+        i_min = np.searchsorted(self.freqs, 200, side="left")
+        i_max = np.searchsorted(self.freqs, 2000, side="right") - 1
+        slice_S = S[i_min:i_max + 1]
+        mask = slice_S >= thr
         labels, n = label(mask)
         tracks = []
         for lbl in range(1, n + 1):
@@ -261,26 +269,37 @@ class DopplerDetector(Detector):
                 rows = coords[coords[:, 1] == ti, 0]
                 if rows.size == 0:
                     continue
-                best = rows[np.argmax(S[rows, ti])]
-                tr.append((ti, best))
+                best = rows[np.argmax(slice_S[rows, ti])]
+                tr.append((ti, best + i_min))
             if tr:
                 tracks.append(tr)
+        print(f"[Threshold] detection {time.perf_counter()-start_t:.2f}s")
         return tracks
 
     def detect_tracks_hough(self):
         """Detect approximate straight-line tracks using a simple Hough transform."""
-        S = self.Sxx_filt
-        binary = S >= self.power_threshold
+        start_t = time.perf_counter()
+        S = np.log1p(self.Sxx_filt)
+        i_min = np.searchsorted(self.freqs, 200, side="left")
+        i_max = np.searchsorted(self.freqs, 2000, side="right") - 1
+        slice_S = S[i_min:i_max + 1]
+        thr = np.percentile(slice_S, (1 - self.power_threshold) * 100)
+        binary = slice_S >= thr
         rows, cols = binary.shape
-        thetas = np.linspace(-np.pi / 2, np.pi / 2, self.hough_theta_steps)
+        thetas = np.linspace(-np.deg2rad(30), np.deg2rad(30), self.hough_theta_steps)
         diag = int(np.ceil(np.hypot(rows, cols)))
         rhos = np.arange(-diag, diag + 1)
         accumulator = np.zeros((len(thetas), len(rhos)), dtype=np.int32)
         ys, xs = np.nonzero(binary)
-        for y, x in zip(ys, xs):
-            for ti, th in enumerate(thetas):
-                rho = int(round(x * np.cos(th) + y * np.sin(th))) + diag
-                accumulator[ti, rho] += 1
+        xs = xs.astype(np.float64)
+        ys = ys.astype(np.float64)
+        cos_t = np.cos(thetas)
+        sin_t = np.sin(thetas)
+        for ti, (c, s) in enumerate(zip(cos_t, sin_t)):
+            rho_vals = np.rint(xs * c + ys * s).astype(np.int64) + diag
+            for r in rho_vals:
+                if 0 <= r < len(rhos):
+                    accumulator[ti, r] += 1
 
         tracks = []
         for ti, th in enumerate(thetas):
@@ -299,13 +318,15 @@ class DopplerDetector(Detector):
                         yi_i = int(round(yi))
                         xi_i = int(round(xi))
                         if 0 <= yi_i < rows and 0 <= xi_i < cols:
-                            tr.append((xi_i, yi_i))
+                            tr.append((xi_i, yi_i + i_min))
                     if tr:
                         tracks.append(tr)
+        print(f"[Hough] detection {time.perf_counter()-start_t:.2f}s")
         return tracks
 
     def run_threshold_detection(self, filepath):
         """Run detection using threshold-based component tracking."""
+        start_t = time.perf_counter()
         y, sr = self.load_audio(filepath)
         f, t, _, _ = self.compute_spectrogram(y, sr, filepath)
         tracks = self.detect_tracks_by_threshold()
@@ -321,10 +342,12 @@ class DopplerDetector(Detector):
             if np.std(f[f_idxs]) > self.max_track_freq_std_hz:
                 continue
             final.append(tr)
+        print(f"[Threshold] full pipeline {time.perf_counter()-start_t:.2f}s")
         return final
 
     def run_hough_detection(self, filepath):
         """Run detection using the Hough transform."""
+        start_t = time.perf_counter()
         y, sr = self.load_audio(filepath)
         f, t, _, _ = self.compute_spectrogram(y, sr, filepath)
         tracks = self.detect_tracks_hough()
@@ -340,6 +363,7 @@ class DopplerDetector(Detector):
             if np.std(f[f_idxs]) > self.max_track_freq_std_hz:
                 continue
             final.append(tr)
+        print(f"[Hough] full pipeline {time.perf_counter()-start_t:.2f}s")
         return final
 
     def run_detection(self, filepath):
@@ -347,6 +371,7 @@ class DopplerDetector(Detector):
         Full pipeline: load, spec, detect, track, merge, filter.
         Returns list of tracks (each a list of (time_idx, freq_idx)).
         """
+        start_t = time.perf_counter()
         y, sr = self.load_audio(filepath)
         f, t, Sxx_norm, Sxx_filt = self.compute_spectrogram(y, sr, filepath)
         if self.detection_method == "hough":
@@ -367,6 +392,7 @@ class DopplerDetector(Detector):
             if np.std(f[f_idxs]) > self.max_track_freq_std_hz:
                 continue
             final.append(tr)
+        print(f"[Detect] full pipeline {time.perf_counter()-start_t:.2f}s")
         return final
 
 
