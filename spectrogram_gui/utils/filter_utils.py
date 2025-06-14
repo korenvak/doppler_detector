@@ -3,7 +3,7 @@
 import numpy as np
 import time
 from scipy.signal import stft, istft, butter, sosfilt
-from scipy.ndimage import gaussian_filter1d, median_filter
+from scipy.ndimage import gaussian_filter1d, median_filter, label
 from typing import Optional, List, Union, Tuple
 
 try:
@@ -378,3 +378,69 @@ def apply_ale_2d_doppler(
         )
         out[i] = filt
     return out
+
+
+def apply_wiener_adaptive_2d(Sxx: np.ndarray, size: tuple = (5, 5)) -> np.ndarray:
+    """2-D Wiener filter with local noise estimation."""
+    from skimage.restoration import wiener
+
+    return wiener(Sxx, size)
+
+
+def apply_track_following_filter(
+    Sxx: np.ndarray,
+    track_detector=None,
+    enhancement_factor: float = 2.0,
+) -> np.ndarray:
+    """Strengthen spectrogram along detected tracks."""
+    from scipy.ndimage import label
+
+    if track_detector is None:
+        thresh = np.percentile(Sxx, 90)
+        binary = Sxx > thresh
+        labeled, n = label(binary)
+        tracks = []
+        for i in range(1, n + 1):
+            idx = np.where(labeled == i)
+            tracks.append({"indices": idx})
+    else:
+        times = np.arange(Sxx.shape[1])
+        freqs = np.arange(Sxx.shape[0])
+        tracks = track_detector.auto_detect(Sxx, times, freqs)
+
+    mask = np.zeros_like(Sxx)
+    for tr in tracks:
+        ti, fi = tr["indices"] if isinstance(tr, dict) else (tr[0], tr[1])
+        for t_idx, f_idx in zip(ti, fi):
+            for df in range(-3, 4):
+                r = f_idx + df
+                if 0 <= r < Sxx.shape[0]:
+                    weight = np.exp(-0.5 * (df / 2) ** 2)
+                    mask[r, t_idx] += weight
+    mask = np.clip(mask, 0, 1)
+    return Sxx * (1 + (enhancement_factor - 1) * mask)
+
+
+def enhance_doppler_tracks(
+    x: np.ndarray,
+    fs: int,
+    method: str = "combined",
+    track_detection: bool = True,
+    enhancement_factor: float = 2.0,
+) -> np.ndarray:
+    """Combined filtering optimized for Doppler tracks."""
+    nperseg = min(1024, len(x) // 8)
+    f, t, Zxx = stft(x, fs=fs, nperseg=nperseg)
+    Sxx = np.abs(Zxx) ** 2
+    if method == "track_only":
+        if track_detection:
+            Sxx = apply_track_following_filter(Sxx, enhancement_factor=enhancement_factor)
+    else:
+        if track_detection:
+            Sxx = apply_track_following_filter(Sxx, enhancement_factor=enhancement_factor)
+        Sxx = apply_wiener_adaptive_2d(Sxx)
+        Sxx = apply_tv_denoising_doppler(Sxx)
+    phase = np.angle(Zxx)
+    Zxx_enh = np.sqrt(Sxx) * np.exp(1j * phase)
+    _, out = istft(Zxx_enh, fs=fs, nperseg=nperseg)
+    return out[: len(x)]
