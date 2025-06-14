@@ -340,18 +340,22 @@ def calculate_relative_movement_to_pixel(df_flight, sensor_lat, sensor_lon, star
 
     movement = []
     for i in range(len(df)):
+        mv = []
+        if abs(delta_heading[i]) > 15:
+            mv.append('turning')
         if delta_dist[i] < -1:
-            movement.append('approaching')
+            mv.append('approaching')
         elif delta_dist[i] > 1:
-            movement.append('departing')
-        elif delta_speed[i] > 2:
-            movement.append('accelerating')
+            mv.append('departing')
+        if delta_speed[i] > 2:
+            mv.append('accelerating')
         elif delta_speed[i] < -2:
-            movement.append('decelerating')
-        elif speed[i] < 1:
-            movement.append('hovering')
-        else:
-            movement.append('cruising')
+            mv.append('decelerating')
+        if speed[i] < 1:
+            mv.append('hovering')
+        if not mv:
+            mv = ['cruising']
+        movement.append(', '.join(mv))
 
     result = pd.DataFrame({
         'time': df['parsed_time'],
@@ -670,6 +674,7 @@ MOVEMENT_COLORS = {
     'hovering': '#9b59b6',    # purple
     'accelerating': '#f39c12',  # orange
     'decelerating': '#3498db',  # blue
+    'turning': '#8e44ad',       # violet
     'cruising': '#95a5a6'      # gray
 }
 
@@ -1035,7 +1040,8 @@ def render_content_from_buttons(btn_map, btn_3d, btn_movement, btn_analytics, bt
                         id='3d-options',
                         options=[
                             {'label': ' Show Sensor Detections', 'value': 'detections'},
-                            {'label': ' Color by Speed', 'value': 'speed'}
+                            {'label': ' Color by Speed', 'value': 'speed'},
+                            {'label': ' Show Pixel Traces', 'value': 'pixel_traces'}
                         ],
                         value=['detections'],
                         inline=True
@@ -1588,6 +1594,8 @@ def update_3d_view(flight, options):
             marker=marker
         ))
 
+        min_alt = flight_df['GPS Alt'].min() if 'GPS Alt' in flight_df.columns else 0
+
         if 'detections' in (options or []):
             flight_events = df_sum[df_sum['Flight number'] == flight]
             if not flight_events.empty:
@@ -1596,10 +1604,37 @@ def update_3d_view(flight, options):
                     fig.add_trace(go.Scatter3d(
                         x=type_events['Sensor Lon'],
                         y=type_events['Sensor Lat'],
-                        z=[0] * len(type_events),
+                        z=[min_alt] * len(type_events),
                         mode='markers',
                         name=f'Sensor {stype}',
                         marker=dict(size=8, color=type_colors.get(stype, '#FF0000'), symbol='diamond')
+                    ))
+
+        if 'pixel_traces' in (options or []):
+            for px in sorted(df_sum[df_sum['Flight number'] == flight]['Pixel'].unique()):
+                windows = dict_pixel.get((flight, px), [])
+                col = pixel_colors.get(px, '#0066CC')
+                for window_idx, (coords, meta, _snap) in enumerate(windows):
+                    lons = [c[1] for c in coords]
+                    lats = [c[0] for c in coords]
+                    alts = [m['alt'] for m in meta]
+                    fig.add_trace(go.Scatter3d(
+                        x=lons,
+                        y=lats,
+                        z=alts,
+                        mode='lines',
+                        line=dict(color=col, width=4),
+                        name=f'Pixel {px} Trace'
+                    ))
+                    colors = [MOVEMENT_COLORS.get(str(m.get('pixel_movement_type','cruising')).split(',')[0].lower(), col) for m in meta]
+                    fig.add_trace(go.Scatter3d(
+                        x=lons,
+                        y=lats,
+                        z=alts,
+                        mode='markers',
+                        marker=dict(size=3, color=colors),
+                        name=f'Pixel {px} Movement',
+                        showlegend=False
                     ))
 
         fig.update_layout(
