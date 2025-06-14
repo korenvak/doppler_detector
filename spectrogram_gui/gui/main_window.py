@@ -188,10 +188,10 @@ class MainWindow(QMainWindow):
         self.auto_detect_btn.setToolTip("Open parameters and run auto-detection")
         self.auto_detect_btn.clicked.connect(self.run_detection)
 
-        self.adv_detect_btn = QPushButton("Advanced Detect")
-        self.adv_detect_btn.setIcon(qta.icon('fa5s.magic'))
-        self.adv_detect_btn.setToolTip("Run advanced detection directly")
-        self.adv_detect_btn.clicked.connect(self.run_advanced_doppler_detection)
+        self.pattern_detect_btn = QPushButton("Pattern Detect")
+        self.pattern_detect_btn.setIcon(qta.icon('fa5s.magic'))
+        self.pattern_detect_btn.setToolTip("Run pattern detection directly")
+        self.pattern_detect_btn.clicked.connect(self.run_pattern_detection)
 
         # Mark Event
         self.mark_event_btn = QPushButton("Mark Event")
@@ -251,7 +251,7 @@ class MainWindow(QMainWindow):
             self.set_csv_btn,
             self.settings_btn,
             self.auto_detect_btn,
-            self.adv_detect_btn,
+            self.pattern_detect_btn,
         ]:
             top_bar.addWidget(w)
 
@@ -417,10 +417,7 @@ class MainWindow(QMainWindow):
                 self.detector.times    = times
                 self.detector.Sxx_filt = Sxx
 
-                if self.detector.detection_method == "advanced":
-                    tracks = self.detector.detect_tracks_advanced()
-                    raw_tracks = self.detector.merge_tracks(tracks)
-                elif self.detector.detection_method == "pattern":
+                if self.detector.detection_method == "pattern":
                     tracks = self.detector.detect_tracks_pattern()
                     raw_tracks = self.detector.merge_tracks(tracks)
                 else:
@@ -429,9 +426,7 @@ class MainWindow(QMainWindow):
                     raw_tracks = self.detector.merge_tracks(tracks)
 
             else:
-                if self.detector.detection_method == "advanced":
-                    raw_tracks = self.detector.run_advanced_detection(self.current_file)
-                elif self.detector.detection_method == "pattern":
+                if self.detector.detection_method == "pattern":
                     raw_tracks = self.detector.run_detection(self.current_file)
                 else:
                     raw_tracks = self.detector.run_detection(self.current_file)
@@ -459,22 +454,18 @@ class MainWindow(QMainWindow):
         except Exception as e:
             QMessageBox.warning(self, "Auto-Detect Error", str(e))
 
-    def run_advanced_doppler_detection(self):
-        """Run detection directly in advanced mode without a parameter dialog."""
+    def run_pattern_detection(self):
+        """Run pattern detection without a parameter dialog."""
         if not self.current_file:
             return
 
-        dlg = DetectorParamsDialog(self, detector=self.detector, mode="both")
+        dlg = DetectorParamsDialog(self, detector=self.detector, mode="pattern")
         if dlg.exec_() != dlg.Accepted:
             return
 
         start_time = datetime.now()
-        if self.detector.detection_method == "pattern":
-            tracks = self.detector.detect_tracks_pattern()
-            raw_tracks = self.detector.merge_tracks(tracks)
-        else:
-            tracks = self.detector.detect_tracks_advanced()
-            raw_tracks = self.detector.merge_tracks(tracks)
+        tracks = self.detector.detect_tracks_pattern()
+        raw_tracks = self.detector.merge_tracks(tracks)
         processed = []
         for tr in raw_tracks:
             t_idx = np.array([pt[0] for pt in tr], dtype=int)
