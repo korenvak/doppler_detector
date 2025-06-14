@@ -44,7 +44,7 @@ class CombinedFilterDialog(QDialog):
             "Gaussian",
             "Median",
             "Gabor",
-            "TV Denoise",
+            "TV Denoise 2D",
         ])
         layout.addWidget(self.filter_box)
 
@@ -213,6 +213,7 @@ class CombinedFilterDialog(QDialog):
                 filter_order=order,
                 slope=self.ale_slope_spin.value(),
                 freq_domain=True,
+                return_error=True,
             )
         elif filt == "Wiener":
             out = apply_wiener(out, noise_db=self.wiener_spin.value())
@@ -222,7 +223,7 @@ class CombinedFilterDialog(QDialog):
             out = apply_median(out, size=self.median_spin.value())
         elif filt == "Gabor":
             out = apply_gabor(out, freq=self.gabor_freq_spin.value(), sigma=self.gabor_sigma_spin.value())
-        elif filt == "TV Denoise":
+        elif filt == "TV Denoise 2D":
             from spectrogram_gui.utils.filter_utils import apply_tv_denoising
             out = apply_tv_denoising(out, weight=self.tv_weight_spin.value())
         

@@ -462,6 +462,7 @@ class AdaptiveFilterDetector(DopplerDetector):
                 mu=self.ale_mu,
                 filter_order=order,
                 freq_domain=True,
+                return_error=True,
             )
         y = apply_wiener(y, noise_db=self.wiener_noise_db)
         if self.use_tv_denoising:
