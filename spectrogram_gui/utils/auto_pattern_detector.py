@@ -20,7 +20,8 @@ class AutoPatternDetector:
         """Adaptive preprocessing with optional median filter."""
         assert isinstance(self.Sxx_filt, np.ndarray) and self.Sxx_filt.ndim == 2
         assert np.isfinite(self.Sxx_filt).all()
-        Sxx_log = np.log1p(self.Sxx_filt)
+        # clip to avoid log of negative values
+        Sxx_log = np.log1p(np.clip(self.Sxx_filt, a_min=0, a_max=None))
         Sxx_norm = (Sxx_log - Sxx_log.mean()) / (Sxx_log.std() + 1e-8)
         if getattr(self.detector, "use_median", False):
             Sxx_norm = ndimage.median_filter(Sxx_norm, size=3)
@@ -36,7 +37,8 @@ class AutoPatternDetector:
         Sxx_norm = (Sxx_band - np.mean(Sxx_band)) / (np.std(Sxx_band) + 1e-8)
 
         # Hessian matrix eigenvalues
-        H = hessian_matrix(Sxx_norm, sigma=sigma, order="rc")
+        # explicit use_gaussian_derivatives to silence future warnings
+        H = hessian_matrix(Sxx_norm, sigma=sigma, order="rc", use_gaussian_derivatives=False)
         ridges, valleys = hessian_matrix_eigvals(H)
 
         # Combine ridges and valleys
@@ -159,7 +161,7 @@ class AutoPatternDetector:
         i_max = np.searchsorted(f, self.detector.freq_max, side="right") - 1
         i_min = max(0, i_min)
         i_max = min(len(f) - 1, i_max)
-        Sxx = np.log1p(self.Sxx_filt)
+        Sxx = self.Sxx_filt
         band = Sxx[i_min : i_max + 1]
 
         # Create ridge & CFAR masks

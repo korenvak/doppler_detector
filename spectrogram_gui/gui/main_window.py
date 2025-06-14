@@ -430,7 +430,11 @@ class MainWindow(QMainWindow):
             # 3) Convert index‐based tracks → time/freq arrays
             processed = []
             for tr in raw_tracks:
-                t_idx, f_idx = tr.get("indices", ([], []))
+                if isinstance(tr, dict):
+                    t_idx, f_idx = tr.get("indices", ([], []))
+                else:
+                    t_idx = [pt[0] for pt in tr]
+                    f_idx = [pt[1] for pt in tr]
                 t_idx = np.asarray(t_idx, dtype=int)
                 f_idx = np.asarray(f_idx, dtype=int)
                 times_arr = self.detector.times[t_idx]
@@ -464,7 +468,11 @@ class MainWindow(QMainWindow):
         raw_tracks = self.detector.detect_tracks_pattern()
         processed = []
         for tr in raw_tracks:
-            t_idx, f_idx = tr.get("indices", ([], []))
+            if isinstance(tr, dict):
+                t_idx, f_idx = tr.get("indices", ([], []))
+            else:
+                t_idx = [pt[0] for pt in tr]
+                f_idx = [pt[1] for pt in tr]
             t_idx = np.asarray(t_idx, dtype=int)
             f_idx = np.asarray(f_idx, dtype=int)
             times_arr = self.detector.times[t_idx]
