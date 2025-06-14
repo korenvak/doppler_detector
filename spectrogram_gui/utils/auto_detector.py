@@ -52,7 +52,9 @@ class DopplerDetector(Detector):
         merge_max_freq_diff_hz=30.0,
         smooth_sigma=1.5,
         median_filter_size=(3, 1),
-        detection_method="peaks"
+        detection_method="peaks",
+        hough_threshold=50,
+        hough_theta_steps=180,
     ):
         # detection parameters
         self.freq_min = freq_min
@@ -73,6 +75,8 @@ class DopplerDetector(Detector):
         self.smooth_sigma = smooth_sigma
         self.median_filter_size = median_filter_size
         self.detection_method = detection_method
+        self.hough_threshold = hough_threshold
+        self.hough_theta_steps = hough_theta_steps
 
         # will be set in compute_spectrogram
         self.freqs = None
@@ -265,11 +269,67 @@ class DopplerDetector(Detector):
                 tracks.append(tr)
         return tracks
 
+    def detect_tracks_hough(self):
+        """Detect approximate straight-line tracks using a simple Hough transform."""
+        S = self.Sxx_filt
+        binary = S >= self.power_threshold
+        rows, cols = binary.shape
+        thetas = np.linspace(-np.pi / 2, np.pi / 2, self.hough_theta_steps)
+        diag = int(np.ceil(np.hypot(rows, cols)))
+        rhos = np.arange(-diag, diag + 1)
+        accumulator = np.zeros((len(thetas), len(rhos)), dtype=np.int32)
+        ys, xs = np.nonzero(binary)
+        for y, x in zip(ys, xs):
+            for ti, th in enumerate(thetas):
+                rho = int(round(x * np.cos(th) + y * np.sin(th))) + diag
+                accumulator[ti, rho] += 1
+
+        tracks = []
+        for ti, th in enumerate(thetas):
+            for ri, rho in enumerate(rhos):
+                if accumulator[ti, ri] >= self.hough_threshold:
+                    a = np.cos(th)
+                    b = np.sin(th)
+                    x0 = 0
+                    y0 = int(round((rho - x0 * a) / b)) if abs(b) > 1e-8 else 0
+                    x1 = cols - 1
+                    y1 = int(round((rho - x1 * a) / b)) if abs(b) > 1e-8 else rows - 1
+                    xs_line = np.linspace(x0, x1, x1 - x0 + 1)
+                    ys_line = (rho - xs_line * a) / b if abs(b) > 1e-8 else np.full_like(xs_line, y0)
+                    tr = []
+                    for xi, yi in zip(xs_line, ys_line):
+                        yi_i = int(round(yi))
+                        xi_i = int(round(xi))
+                        if 0 <= yi_i < rows and 0 <= xi_i < cols:
+                            tr.append((xi_i, yi_i))
+                    if tr:
+                        tracks.append(tr)
+        return tracks
+
     def run_threshold_detection(self, filepath):
         """Run detection using threshold-based component tracking."""
         y, sr = self.load_audio(filepath)
         f, t, _, _ = self.compute_spectrogram(y, sr, filepath)
         tracks = self.detect_tracks_by_threshold()
+        tracks = self.merge_tracks(tracks)
+        final = []
+        for tr in tracks:
+            if len(tr) < self.min_track_length_frames:
+                continue
+            f_idxs = [pt[1] for pt in tr]
+            powers = [self.Sxx_filt[fi, ti] for ti, fi in tr]
+            if np.mean(powers) < self.min_track_avg_power:
+                continue
+            if np.std(f[f_idxs]) > self.max_track_freq_std_hz:
+                continue
+            final.append(tr)
+        return final
+
+    def run_hough_detection(self, filepath):
+        """Run detection using the Hough transform."""
+        y, sr = self.load_audio(filepath)
+        f, t, _, _ = self.compute_spectrogram(y, sr, filepath)
+        tracks = self.detect_tracks_hough()
         tracks = self.merge_tracks(tracks)
         final = []
         for tr in tracks:
@@ -291,8 +351,11 @@ class DopplerDetector(Detector):
         """
         y, sr = self.load_audio(filepath)
         f, t, Sxx_norm, Sxx_filt = self.compute_spectrogram(y, sr, filepath)
-        peaks = self.detect_peaks_per_frame()
-        tracks = self.track_peaks_over_time(peaks)
+        if self.detection_method == "hough":
+            tracks = self.detect_tracks_hough()
+        else:
+            peaks = self.detect_peaks_per_frame()
+            tracks = self.track_peaks_over_time(peaks)
         tracks = self.merge_tracks(tracks)
         # final filter
         final = []
@@ -316,21 +379,17 @@ class AdaptiveFilterDetector(DopplerDetector):
         self,
         *args,
         nlms_mu=0.01,
-        lms_mu=0.01,
         ale_delay=None,
         ale_mu=0.1,
         ale_lambda=0.995,
-        rls_lambda=0.99,
         wiener_noise_db=-20,
         **kwargs,
     ):
         super().__init__(*args, **kwargs)
         self.nlms_mu = nlms_mu
-        self.lms_mu = lms_mu
         self.ale_delay = ale_delay
         self.ale_mu = ale_mu
         self.ale_lambda = ale_lambda
-        self.rls_lambda = rls_lambda
         self.wiener_noise_db = wiener_noise_db
 
     def load_audio(self, filepath):
@@ -338,15 +397,13 @@ class AdaptiveFilterDetector(DopplerDetector):
         order = min(32, len(y))
         if order > 1:
             y = apply_nlms(y, mu=self.nlms_mu, filter_order=order)
-            y = apply_lms(y, mu=self.lms_mu, filter_order=order)
         if self.ale_delay is None or order > self.ale_delay:
             y = apply_ale(
                 y,
                 delay=self.ale_delay,
                 mu=self.ale_mu,
                 filter_order=order,
+                freq_domain=True,
             )
-        if order > 1:
-            y = apply_rls(y, forgetting_factor=self.rls_lambda, filter_order=order)
         y = apply_wiener(y, noise_db=self.wiener_noise_db)
         return y, sr

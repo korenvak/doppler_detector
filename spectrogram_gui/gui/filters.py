@@ -14,12 +14,11 @@ from PyQt5.QtWidgets import (
 from spectrogram_gui.utils.spectrogram_utils import compute_spectrogram
 from spectrogram_gui.utils.filter_utils import (
     apply_nlms,
-    apply_lms,
     apply_ale,
-    apply_rls,
     apply_wiener,
     apply_gaussian,
     apply_median,
+    apply_gabor,
 )
 
 
@@ -28,7 +27,7 @@ from spectrogram_gui.utils.filter_utils import (
 
 class CombinedFilterDialog(QDialog):
     """
-    Dialog to apply NLMS, LMS, ALE, RLS and/or Wiener adaptive filters
+    Dialog to apply NLMS, ALE, Wiener and other smoothing filters
     to the selected time-range in the spectrogram GUI.
     """
     def __init__(self, main_window):
@@ -41,19 +40,17 @@ class CombinedFilterDialog(QDialog):
 
         # --- checkboxes ---
         self.nlms_chk = QCheckBox("Enable NLMS")
-        self.lms_chk = QCheckBox("Enable LMS")
         self.ale_chk = QCheckBox("Enable ALE")
-        self.rls_chk = QCheckBox("Enable RLS")
         self.wiener_chk = QCheckBox("Enable Wiener Adaptive")
         self.gauss_chk = QCheckBox("Gaussian Smooth")
         self.median_chk = QCheckBox("Median Filter")
+        self.gabor_chk = QCheckBox("Gabor Filter")
         layout.addWidget(self.nlms_chk)
-        layout.addWidget(self.lms_chk)
         layout.addWidget(self.ale_chk)
-        layout.addWidget(self.rls_chk)
         layout.addWidget(self.wiener_chk)
         layout.addWidget(self.gauss_chk)
         layout.addWidget(self.median_chk)
+        layout.addWidget(self.gabor_chk)
 
         # --- parameter controls ---
         p_layout = QHBoxLayout()
@@ -63,13 +60,6 @@ class CombinedFilterDialog(QDialog):
         self.nlms_spin.setSingleStep(0.001)
         self.nlms_spin.setValue(0.01)
         p_layout.addWidget(self.nlms_spin)
-
-        p_layout.addWidget(QLabel("LMS μ (0–1):"))
-        self.lms_spin = QDoubleSpinBox()
-        self.lms_spin.setRange(0.0001, 1.0)
-        self.lms_spin.setSingleStep(0.001)
-        self.lms_spin.setValue(0.01)
-        p_layout.addWidget(self.lms_spin)
 
         p_layout.addWidget(QLabel("ALE μ (0–1):"))
         self.ale_spin = QDoubleSpinBox()
@@ -86,12 +76,13 @@ class CombinedFilterDialog(QDialog):
         self.ale_delay_spin.setToolTip("0 = automatic delay search")
         p_layout.addWidget(self.ale_delay_spin)
 
-        p_layout.addWidget(QLabel("RLS λ (0–1):"))
-        self.rls_spin = QDoubleSpinBox()
-        self.rls_spin.setRange(0.9, 1.0)
-        self.rls_spin.setSingleStep(0.001)
-        self.rls_spin.setValue(0.99)
-        p_layout.addWidget(self.rls_spin)
+        p_layout.addWidget(QLabel("ALE Slope:"))
+        self.ale_slope_spin = QDoubleSpinBox()
+        self.ale_slope_spin.setRange(-1.0, 1.0)
+        self.ale_slope_spin.setSingleStep(0.01)
+        self.ale_slope_spin.setValue(0.0)
+        p_layout.addWidget(self.ale_slope_spin)
+
 
         p_layout.addWidget(QLabel("Wiener Noise (dB):"))
         self.wiener_spin = QDoubleSpinBox()
@@ -113,6 +104,20 @@ class CombinedFilterDialog(QDialog):
         self.median_spin.setSingleStep(2)
         self.median_spin.setValue(3)
         p_layout.addWidget(self.median_spin)
+
+        p_layout.addWidget(QLabel("Gabor f:"))
+        self.gabor_freq_spin = QDoubleSpinBox()
+        self.gabor_freq_spin.setRange(0.01, 0.5)
+        self.gabor_freq_spin.setSingleStep(0.01)
+        self.gabor_freq_spin.setValue(0.1)
+        p_layout.addWidget(self.gabor_freq_spin)
+
+        p_layout.addWidget(QLabel("Gabor σ:"))
+        self.gabor_sigma_spin = QDoubleSpinBox()
+        self.gabor_sigma_spin.setRange(0.5, 10.0)
+        self.gabor_sigma_spin.setSingleStep(0.1)
+        self.gabor_sigma_spin.setValue(2.0)
+        p_layout.addWidget(self.gabor_sigma_spin)
 
         layout.addLayout(p_layout)
 
@@ -162,12 +167,6 @@ class CombinedFilterDialog(QDialog):
                 return
             out = apply_nlms(out, mu=self.nlms_spin.value(), filter_order=order)
 
-        if self.lms_chk.isChecked():
-            if len(out) < order:
-                QMessageBox.warning(self, "Too Short", "Segment shorter than LMS order.")
-                return
-            out = apply_lms(out, mu=self.lms_spin.value(), filter_order=order)
-
         if self.ale_chk.isChecked():
             if len(out) < order:
                 QMessageBox.warning(self, "Too Short", "Segment shorter than ALE order.")
@@ -179,13 +178,9 @@ class CombinedFilterDialog(QDialog):
                 delay=delay,
                 mu=self.ale_spin.value(),
                 filter_order=order,
+                slope=self.ale_slope_spin.value(),
+                freq_domain=True,
             )
-
-        if self.rls_chk.isChecked():
-            if len(out) < order:
-                QMessageBox.warning(self, "Too Short", "Segment shorter than RLS order.")
-                return
-            out = apply_rls(out, forgetting_factor=self.rls_spin.value(), filter_order=order)
         if self.wiener_chk.isChecked():
             out = apply_wiener(out, noise_db=self.wiener_spin.value())
 
@@ -194,6 +189,13 @@ class CombinedFilterDialog(QDialog):
 
         if self.median_chk.isChecked():
             out = apply_median(out, size=self.median_spin.value())
+
+        if self.gabor_chk.isChecked():
+            out = apply_gabor(
+                out,
+                freq=self.gabor_freq_spin.value(),
+                sigma=self.gabor_sigma_spin.value(),
+            )
 
         # 5) write back & replot
         new_wave = wave.copy()
