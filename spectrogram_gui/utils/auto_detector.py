@@ -1,10 +1,7 @@
 import numpy as np
 import time
 from tqdm import tqdm
-from scipy.ndimage import gaussian_filter, median_filter, label, laplace, binary_opening
-from scipy.signal import find_peaks, wiener
-from skimage.transform import probabilistic_hough_line
-from skimage.morphology import remove_small_objects, skeletonize
+from scipy.signal import find_peaks
 # use your spectrogram and audio‐loading utils instead of soundfile + scipy.spectrogram
 from spectrogram_gui.utils.audio_utils import load_audio_with_filters
 from spectrogram_gui.utils.spectrogram_utils import compute_spectrogram as sg_compute_spec
@@ -54,25 +51,6 @@ class DopplerDetector(Detector):
         smooth_sigma=1.5,
         median_filter_size=(3, 1),
         detection_method="peaks",
-        adv_threshold_percentile=80,
-        adv_min_line_length=30,
-        adv_line_gap=10,
-        adv_use_cfar=True,
-        adv_ridge_sigma=2.5,
-        adv_cfar_train=20,
-        adv_cfar_guard=2,
-        adv_cfar_pfa=0.001,
-        adv_min_object_size=30,
-        adv_use_skeleton=True,
-        adv_min_slope=0.3,
-        adv_threshold_method="percentile",
-        random_seed=0,
-        deterministic_hough=False,
-        use_median=False,
-        max_mask_coverage=0.25,
-        min_mask_coverage=0.05,
-        threshold_adjust_step=1.0,
-        enable_post_merge=True,
         fast_mode=False,
     ):
         # detection parameters
@@ -94,25 +72,7 @@ class DopplerDetector(Detector):
         self.smooth_sigma = smooth_sigma
         self.median_filter_size = median_filter_size
         self.detection_method = detection_method
-        self.adv_threshold_percentile = adv_threshold_percentile
-        self.adv_min_line_length = adv_min_line_length
-        self.adv_line_gap = adv_line_gap
-        self.adv_use_cfar = adv_use_cfar
-        self.adv_ridge_sigma = adv_ridge_sigma
-        self.adv_cfar_train = adv_cfar_train
-        self.adv_cfar_guard = adv_cfar_guard
-        self.adv_cfar_pfa = adv_cfar_pfa
-        self.adv_min_object_size = adv_min_object_size
-        self.adv_use_skeleton = adv_use_skeleton
-        self.adv_min_slope = adv_min_slope
-        self.adv_threshold_method = adv_threshold_method
-        self.random_seed = random_seed
-        self.deterministic_hough = deterministic_hough
-        self.use_median = use_median
-        self.max_mask_coverage = max_mask_coverage
-        self.min_mask_coverage = min_mask_coverage
-        self.threshold_adjust_step = threshold_adjust_step
-        self.enable_post_merge = enable_post_merge
+        self.enable_post_merge = True
         self.fast_mode = fast_mode
 
         # will be set in compute_spectrogram
@@ -285,87 +245,6 @@ class DopplerDetector(Detector):
                     merged.append(e)
         return [e["track"] for e in merged]
 
-    def _preprocess_spectrogram(self, Sxx):
-        S = np.log1p(Sxx)
-        S = wiener(S, (5, 5))
-        S = S - 0.3 * laplace(S)
-        return S
-
-    def _cfar(self, Sxx, num_train=20, num_guard=2, pfa=0.001):
-        """Return a boolean mask using a simple cell-averaging CFAR."""
-        n_freq, _ = Sxx.shape
-        alpha = num_train * (pfa ** (-1 / num_train) - 1)
-        mask = np.zeros_like(Sxx, dtype=bool)
-        for fi in range(num_guard + num_train, n_freq - num_guard - num_train):
-            up = Sxx[fi - num_guard - num_train : fi - num_guard]
-            down = Sxx[fi + num_guard + 1 : fi + num_guard + num_train + 1]
-            if up.size and down.size:
-                noise = 0.5 * (up.mean(axis=0) + down.mean(axis=0))
-                thr = alpha * noise
-                mask[fi] = Sxx[fi] > thr
-        return mask
-
-
-    def detect_tracks_advanced(self):
-        start_t = time.perf_counter()
-        S = self._preprocess_spectrogram(self.Sxx_filt)
-        i_min = np.searchsorted(self.freqs, self.freq_min, side='left')
-        i_max = np.searchsorted(self.freqs, self.freq_max, side='right') - 1
-        i_min = max(i_min, 0)
-        i_max = min(i_max, len(self.freqs) - 1)
-        band = S[i_min:i_max + 1]
-        thr = np.percentile(band, self.adv_threshold_percentile)
-        base_m = band > thr
-        if self.adv_use_cfar:
-            cfar_m = self._cfar(
-                band,
-                num_train=self.adv_cfar_train,
-                num_guard=self.adv_cfar_guard,
-                pfa=self.adv_cfar_pfa,
-            )
-        else:
-            cfar_m = np.ones_like(base_m, dtype=bool)
-
-        mask = base_m | cfar_m
-        print(
-            "Base:", base_m.sum(),
-            "CFAR:", cfar_m.sum(),
-            "Combined:", mask.sum(),
-        )
-        mask = binary_opening(mask, iterations=1)
-        mask = remove_small_objects(mask.astype(bool), min_size=self.adv_min_object_size)
-        if self.adv_use_skeleton:
-            mask = skeletonize(mask)
-        lines = probabilistic_hough_line(
-            mask.astype(np.uint8),
-            threshold=10,
-            line_length=self.adv_min_line_length,
-            line_gap=self.adv_line_gap,
-        )
-        filtered_lines = []
-        for (x0, y0), (x1, y1) in lines:
-            dx = x1 - x0
-            dy = y1 - y0
-            if dx == 0:
-                continue
-            slope = dy / dx
-            if abs(slope) >= self.adv_min_slope:
-                filtered_lines.append(((x0, y0), (x1, y1)))
-
-        tracks = []
-        for line in filtered_lines:
-            (x0, y0), (x1, y1) = line
-            num = max(abs(x1 - x0), abs(y1 - y0)) + 1
-            xs = np.linspace(x0, x1, num).astype(int)
-            ys = np.linspace(y0, y1, num).astype(int)
-            tr = []
-            for xi, yi in zip(xs, ys):
-                if 0 <= xi < mask.shape[1] and 0 <= yi < mask.shape[0]:
-                    tr.append((xi, yi + i_min))
-            if tr:
-                tracks.append(tr)
-        print(f"[Pattern] detection {time.perf_counter()-start_t:.2f}s")
-        return tracks
 
 
     def run_detection(self, filepath):
@@ -376,11 +255,8 @@ class DopplerDetector(Detector):
         start_t = time.perf_counter()
         y, sr = self.load_audio(filepath)
         f, t, Sxx_norm, Sxx_filt = self.compute_spectrogram(y, sr, filepath)
-        if self.detection_method == "advanced":
-            tracks = self.detect_tracks_advanced()
-        else:
-            peaks = self.detect_peaks_per_frame()
-            tracks = self.track_peaks_over_time(peaks)
+        peaks = self.detect_peaks_per_frame()
+        tracks = self.track_peaks_over_time(peaks)
 
         tracks = self.merge_tracks(tracks)
 
