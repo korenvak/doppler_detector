@@ -12,7 +12,7 @@ from spectrogram_gui.utils.spectrogram_utils import compute_spectrogram as sg_co
 from spectrogram_gui.utils.filter_utils import (
     apply_nlms,
     apply_ale,
-    apply_wiener,
+    apply_wiener_adaptive,
     apply_tv_denoising,
     apply_tv_denoising_2d,
 )
@@ -464,7 +464,7 @@ class AdaptiveFilterDetector(DopplerDetector):
                 freq_domain=True,
                 return_error=True,
             )
-        y = apply_wiener(y, noise_db=self.wiener_noise_db)
+        y = apply_wiener_adaptive(y, window_size=1024)
         if self.use_tv_denoising:
             y = apply_tv_denoising(y, weight=self.tv_denoising_weight)
         return y, sr

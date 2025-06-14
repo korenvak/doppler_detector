@@ -15,7 +15,6 @@ from spectrogram_gui.utils.spectrogram_utils import compute_spectrogram
 from spectrogram_gui.utils.filter_utils import (
     apply_nlms,
     apply_ale,
-    apply_wiener,
     apply_gaussian,
     apply_median,
     apply_gabor,
@@ -216,7 +215,8 @@ class CombinedFilterDialog(QDialog):
                 return_error=True,
             )
         elif filt == "Wiener":
-            out = apply_wiener(out, noise_db=self.wiener_spin.value())
+            from spectrogram_gui.utils.filter_utils import apply_wiener_adaptive
+            out = apply_wiener_adaptive(out, window_size=1024)
         elif filt == "Gaussian":
             out = apply_gaussian(out, sigma=self.gauss_spin.value())
         elif filt == "Median":
