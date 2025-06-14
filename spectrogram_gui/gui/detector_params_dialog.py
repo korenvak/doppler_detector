@@ -14,6 +14,7 @@ class DetectorParamsDialog(QDialog):
         self.mode = mode
 
         layout = QFormLayout(self)
+        self.layout = layout
 
         if self.mode == "both":
             self.method_box = QComboBox()
@@ -130,6 +131,17 @@ class DetectorParamsDialog(QDialog):
         self.merge_freq_diff_spin.setSingleStep(1.0)
         self.merge_freq_diff_spin.setValue(detector.merge_max_freq_diff_hz)
         layout.addRow("Merge Max Freq Diff [Hz]:", self.merge_freq_diff_spin)
+
+        self.tv_check = QCheckBox("Use TV Denoising")
+        self.tv_check.setChecked(getattr(detector, "use_tv_denoising", False))
+        layout.addRow(self.tv_check)
+
+        self.tv_weight_spin = QDoubleSpinBox()
+        self.tv_weight_spin.setDecimals(2)
+        self.tv_weight_spin.setRange(0.01, 1.0)
+        self.tv_weight_spin.setSingleStep(0.01)
+        self.tv_weight_spin.setValue(getattr(detector, "tv_denoising_weight", 0.1))
+        layout.addRow("TV Denoising Weight:", self.tv_weight_spin)
 
         # --- Advanced Detection Parameters ---
         self.adv_header = QLabel("<b>Advanced Detection Parameters</b>")
@@ -273,12 +285,20 @@ class DetectorParamsDialog(QDialog):
             self.adv_use_skeleton_check,
             self.adv_header,
         ]
+        def show_row(widget, vis):
+            row = self.layout.getWidgetPosition(widget)[0]
+            if row < 0:
+                return
+            for col in range(self.layout.columnCount()):
+                item = self.layout.itemAtPosition(row, col)
+                if item and item.widget():
+                    item.widget().setVisible(vis)
 
         for w in peak_widgets:
-            w.setVisible(peaks)
+            show_row(w, peaks)
 
         for w in adv_widgets:
-            w.setVisible(advanced)
+            show_row(w, advanced)
 
     def accept(self):
         d = self.detector
@@ -297,6 +317,8 @@ class DetectorParamsDialog(QDialog):
         d.max_track_freq_std_hz = self.max_std_spin.value()
         d.merge_gap_frames = self.merge_gap_spin.value()
         d.merge_max_freq_diff_hz = self.merge_freq_diff_spin.value()
+        d.use_tv_denoising = self.tv_check.isChecked()
+        d.tv_denoising_weight = self.tv_weight_spin.value()
         d.adv_threshold_percentile = self.adv_thresh_spin.value()
         d.adv_min_line_length = self.adv_len_spin.value()
         d.adv_line_gap = self.adv_gap_spin.value()

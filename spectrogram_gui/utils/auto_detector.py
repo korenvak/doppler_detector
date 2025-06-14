@@ -13,6 +13,7 @@ from spectrogram_gui.utils.filter_utils import (
     apply_nlms,
     apply_ale,
     apply_wiener,
+    apply_tv_denoising,
 )
 
 # Default frequency range (Hz)
@@ -68,6 +69,8 @@ class DopplerDetector(Detector):
         adv_use_skeleton=True,
         adv_min_slope=0.3,
         fast_mode=False,
+        use_tv_denoising=False,
+        tv_denoising_weight=0.1,
     ):
         # detection parameters
         self.freq_min = freq_min
@@ -101,6 +104,8 @@ class DopplerDetector(Detector):
         self.adv_use_skeleton = adv_use_skeleton
         self.adv_min_slope = adv_min_slope
         self.fast_mode = fast_mode
+        self.use_tv_denoising = use_tv_denoising
+        self.tv_denoising_weight = tv_denoising_weight
 
         # will be set in compute_spectrogram
         self.freqs = None
@@ -322,7 +327,7 @@ class DopplerDetector(Detector):
         else:
             ridge_m = np.ones_like(base_m, dtype=bool)
 
-        mask = base_m & ridge_m
+        mask = base_m & (ridge_m | cfar_m)
         print(
             "Base:", base_m.sum(),
             "CFAR:", cfar_m.sum(),
@@ -426,6 +431,8 @@ class AdaptiveFilterDetector(DopplerDetector):
         ale_mu=0.1,
         ale_lambda=0.995,
         wiener_noise_db=-20,
+        use_tv_denoising=False,
+        tv_denoising_weight=0.1,
         **kwargs,
     ):
         super().__init__(*args, **kwargs)
@@ -434,6 +441,8 @@ class AdaptiveFilterDetector(DopplerDetector):
         self.ale_mu = ale_mu
         self.ale_lambda = ale_lambda
         self.wiener_noise_db = wiener_noise_db
+        self.use_tv_denoising = use_tv_denoising
+        self.tv_denoising_weight = tv_denoising_weight
 
     def load_audio(self, filepath):
         y, sr = super().load_audio(filepath)
@@ -449,4 +458,6 @@ class AdaptiveFilterDetector(DopplerDetector):
                 freq_domain=True,
             )
         y = apply_wiener(y, noise_db=self.wiener_noise_db)
+        if self.use_tv_denoising:
+            y = apply_tv_denoising(y, weight=self.tv_denoising_weight)
         return y, sr
