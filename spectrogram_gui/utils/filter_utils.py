@@ -75,7 +75,7 @@ def apply_nlms(x: np.ndarray, mu: float = 0.01, filter_order: int = 32) -> np.nd
 
 def apply_ale(
     x: np.ndarray,
-    delay: Optional[int] = None,
+    delay: Optional[int] = 3,
     mu: float = 0.01,
     filter_order: int = 32,
     test_delays: Optional[Union[int, List[int]]] = None,
@@ -84,6 +84,7 @@ def apply_ale(
     forgetting_factor: Optional[float] = None,
     slope: float = 0.0,
     freq_domain: bool = False,
+    return_error: bool = False,
     n_fft: int = 1024,
     hop_length: int = 512,
     fast_mode: bool = False,
@@ -117,6 +118,9 @@ def apply_ale(
     freq_domain : bool, optional
         If ``True``, perform the enhancement on STFT magnitudes instead of the
         raw time signal. Default is ``False``.
+    return_error : bool, optional
+        If ``True``, return the prediction error instead of the enhanced
+        component. Default is ``False``.
     n_fft : int, optional
         FFT size when ``freq_domain`` is ``True``. Default is ``1024``.
     hop_length : int, optional
@@ -127,9 +131,11 @@ def apply_ale(
     Returns
     -------
     np.ndarray or tuple
-        The predicted signal for the best delay.  If ``return_all`` is ``True``
-        the return value is ``(best_y, best_delay, all_y, metrics)`` where
-        ``metrics`` is ``None`` when ``return_metrics`` is ``False``.
+        The predicted signal for the best delay unless ``return_error`` is
+        ``True`` in which case the prediction error is returned. If
+        ``return_all`` is ``True`` the return value is
+        ``(best_y, best_delay, all_y, metrics)`` where ``metrics`` is ``None``
+        when ``return_metrics`` is ``False``.
     """
 
     def _ale_1d(sig: np.ndarray, d: int) -> np.ndarray:
@@ -179,7 +185,7 @@ def apply_ale(
         d = delay if delay is not None else 3
         best_y = _ale_1d(x, d)
         print(f"[ALE] fast mode delay={d} took {time.perf_counter()-start_t:.2f}s")
-        return best_y
+        return x - best_y if return_error else best_y
 
     if delay is not None:
         # Single delay case
@@ -190,9 +196,10 @@ def apply_ale(
             num = np.sum(best_y ** 2)
             den = np.sum(err ** 2) + 1e-8
             metrics = [10 * np.log10(num / den)]
+        result = x - best_y if return_error else best_y
         if return_all:
-            return best_y, delay, [best_y], metrics
-        return best_y if not return_metrics else (best_y, delay, metrics)
+            return result, delay, [result], metrics
+        return result if not return_metrics else (result, delay, metrics)
 
     # Search over multiple delays for best energy
     if test_delays is None:
@@ -220,10 +227,17 @@ def apply_ale(
     best_y = all_y[best_idx]
 
     if return_all:
-        return best_y, best_delay, all_y, metrics if return_metrics else None
+        result_list = [x - y if return_error else y for y in all_y]
+        return (
+            result_list[best_idx],
+            best_delay,
+            result_list,
+            metrics if return_metrics else None,
+        )
 
     print(f"[ALE] processed in {time.perf_counter()-start_t:.2f}s")
-    return best_y if not return_metrics else (best_y, best_delay, metrics[best_idx])
+    result = x - best_y if return_error else best_y
+    return result if not return_metrics else (result, best_delay, metrics[best_idx])
 
 def apply_rls(x: np.ndarray, forgetting_factor: float = 0.99, filter_order: int = 32) -> np.ndarray:
     """Recursive Least Squares adaptive filter returning the error signal."""
@@ -304,3 +318,10 @@ def apply_tv_denoising(x: np.ndarray, weight: float = 0.1) -> np.ndarray:
 
     x = x.astype(np.float64, copy=False)
     return denoise_tv_chambolle(x, weight=weight)
+
+
+def apply_tv_denoising_2d(Sxx: np.ndarray, weight: float = 0.1) -> np.ndarray:
+    """Total variation denoising for spectrograms (2D)."""
+    from skimage.restoration import denoise_tv_chambolle
+
+    return denoise_tv_chambolle(Sxx, weight=weight, channel_axis=None)
