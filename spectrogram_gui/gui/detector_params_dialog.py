@@ -7,19 +7,23 @@ from PyQt5.QtWidgets import (
 from PyQt5.QtCore import Qt
 
 class DetectorParamsDialog(QDialog):
-    def __init__(self, parent=None, detector=None):
+    def __init__(self, parent=None, detector=None, mode="both"):
         super().__init__(parent)
         self.setWindowTitle("Detection Parameters")
         self.detector = detector
+        self.mode = mode
 
         layout = QFormLayout(self)
 
-        self.method_box = QComboBox()
-        self.method_box.addItems(["Peaks", "Advanced"])
-        method = getattr(detector, "detection_method", "peaks")
-        if method == "advanced":
-            self.method_box.setCurrentIndex(1)
-        layout.addRow("Detection Method:", self.method_box)
+        if self.mode == "both":
+            self.method_box = QComboBox()
+            self.method_box.addItems(["Peaks", "Advanced"])
+            method = getattr(detector, "detection_method", "peaks")
+            if method == "advanced":
+                self.method_box.setCurrentIndex(1)
+            layout.addRow("Detection Method:", self.method_box)
+        else:
+            self.method_box = None
 
 
 
@@ -155,13 +159,18 @@ class DetectorParamsDialog(QDialog):
         buttons.rejected.connect(self.reject)
         layout.addRow(buttons)
 
-        self.method_box.currentIndexChanged.connect(self.update_visibility)
+        if self.method_box is not None:
+            self.method_box.currentIndexChanged.connect(self.update_visibility)
         self.update_visibility()
 
 
     def update_visibility(self):
-        peaks = self.method_box.currentIndex() == 0
-        advanced = self.method_box.currentIndex() == 1
+        if self.method_box is None:
+            peaks = self.mode == "peaks"
+            advanced = self.mode == "advanced"
+        else:
+            peaks = self.method_box.currentIndex() == 0
+            advanced = self.method_box.currentIndex() == 1
 
         peak_widgets = [
             self.power_thresh_spin,
@@ -211,8 +220,11 @@ class DetectorParamsDialog(QDialog):
         d.adv_threshold_percentile = self.adv_thresh_spin.value()
         d.adv_min_line_length = self.adv_len_spin.value()
         d.adv_line_gap = self.adv_gap_spin.value()
-        if self.method_box.currentIndex() == 1:
-            d.detection_method = "advanced"
+        if self.method_box is not None:
+            if self.method_box.currentIndex() == 1:
+                d.detection_method = "advanced"
+            else:
+                d.detection_method = "peaks"
         else:
-            d.detection_method = "peaks"
+            d.detection_method = "advanced" if self.mode == "advanced" else "peaks"
         super().accept()
