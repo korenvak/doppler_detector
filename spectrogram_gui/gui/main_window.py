@@ -371,7 +371,7 @@ class MainWindow(QMainWindow):
             return
 
         # 1) Show parameters dialog
-        dlg = DetectorParamsDialog(self, detector=self.detector)
+        dlg = DetectorParamsDialog(self, detector=self.detector, mode="peaks")
         if dlg.exec_() != dlg.Accepted:
             return
 
@@ -441,6 +441,10 @@ class MainWindow(QMainWindow):
     def run_advanced_doppler_detection(self):
         """Run detection directly in advanced mode without a parameter dialog."""
         if not self.current_file:
+            return
+
+        dlg = DetectorParamsDialog(self, detector=self.detector, mode="advanced")
+        if dlg.exec_() != dlg.Accepted:
             return
 
         self.detector.detection_method = "advanced"
@@ -739,7 +743,7 @@ class MainWindow(QMainWindow):
         return super().eventFilter(obj, event)
 
     def open_detector_params(self):
-        dlg = DetectorParamsDialog(self, detector=self.detector)
+        dlg = DetectorParamsDialog(self, detector=self.detector, mode="both")
         dlg.exec_()
 
     def load_prev_file(self):
