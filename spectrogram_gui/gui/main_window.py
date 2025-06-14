@@ -418,24 +418,21 @@ class MainWindow(QMainWindow):
                 self.detector.Sxx_filt = Sxx
 
                 if self.detector.detection_method == "pattern":
-                    tracks = self.detector.detect_tracks_pattern()
-                    raw_tracks = self.detector.merge_tracks(tracks)
+                    raw_tracks = self.detector.detect_tracks_pattern()
                 else:
                     peaks  = self.detector.detect_peaks_per_frame()
                     tracks = self.detector.track_peaks_over_time(peaks)
                     raw_tracks = self.detector.merge_tracks(tracks)
 
             else:
-                if self.detector.detection_method == "pattern":
-                    raw_tracks = self.detector.run_detection(self.current_file)
-                else:
-                    raw_tracks = self.detector.run_detection(self.current_file)
+                raw_tracks = self.detector.run_detection(self.current_file)
 
             # 3) Convert index‐based tracks → time/freq arrays
             processed = []
             for tr in raw_tracks:
-                t_idx = np.array([pt[0] for pt in tr], dtype=int)
-                f_idx = np.array([pt[1] for pt in tr], dtype=int)
+                t_idx, f_idx = tr.get("indices", ([], []))
+                t_idx = np.asarray(t_idx, dtype=int)
+                f_idx = np.asarray(f_idx, dtype=int)
                 times_arr = self.detector.times[t_idx]
                 freqs_arr = self.detector.freqs[f_idx]
                 processed.append((times_arr, freqs_arr))
@@ -464,12 +461,12 @@ class MainWindow(QMainWindow):
             return
 
         start_time = datetime.now()
-        tracks = self.detector.detect_tracks_pattern()
-        raw_tracks = self.detector.merge_tracks(tracks)
+        raw_tracks = self.detector.detect_tracks_pattern()
         processed = []
         for tr in raw_tracks:
-            t_idx = np.array([pt[0] for pt in tr], dtype=int)
-            f_idx = np.array([pt[1] for pt in tr], dtype=int)
+            t_idx, f_idx = tr.get("indices", ([], []))
+            t_idx = np.asarray(t_idx, dtype=int)
+            f_idx = np.asarray(f_idx, dtype=int)
             times_arr = self.detector.times[t_idx]
             freqs_arr = self.detector.freqs[f_idx]
             processed.append((times_arr, freqs_arr))

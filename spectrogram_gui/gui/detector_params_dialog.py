@@ -148,6 +148,11 @@ class DetectorParamsDialog(QDialog):
         layout.addRow(self.adv_header)
 
         # 18) Advanced mask percentile
+        self.thresh_method_box = QComboBox()
+        self.thresh_method_box.addItems(["percentile", "otsu", "cfar"])
+        self.thresh_method_box.setCurrentText(detector.adv_threshold_method)
+        layout.addRow("Threshold Method:", self.thresh_method_box)
+
         self.adv_thresh_label = QLabel("Mask Percentile:")
         self.adv_thresh_spin = QSpinBox()
         self.adv_thresh_spin.setRange(50, 100)
@@ -180,11 +185,6 @@ class DetectorParamsDialog(QDialog):
         self.adv_slope_spin.setToolTip("Minimum absolute slope of Hough lines")
         layout.addRow(self.adv_slope_label, self.adv_slope_spin)
 
-        # use CFAR
-        self.adv_use_cfar_check = QCheckBox("Use CFAR")
-        self.adv_use_cfar_check.setChecked(detector.adv_use_cfar)
-        self.adv_use_cfar_check.setToolTip("Apply Constant False Alarm Rate filtering")
-        layout.addRow(self.adv_use_cfar_check)
 
         # CFAR parameters
         self.adv_cfar_train_spin = QSpinBox()
@@ -231,6 +231,41 @@ class DetectorParamsDialog(QDialog):
         self.adv_use_skeleton_check.setToolTip("Thin mask before Hough transform")
         layout.addRow(self.adv_use_skeleton_check)
 
+        self.median_check = QCheckBox("Use Median Filter")
+        self.median_check.setChecked(getattr(detector, "use_median", False))
+        layout.addRow(self.median_check)
+
+        self.random_seed_spin = QSpinBox()
+        self.random_seed_spin.setRange(0, 9999)
+        self.random_seed_spin.setValue(getattr(detector, "random_seed", 0))
+        layout.addRow("Random Seed:", self.random_seed_spin)
+
+        self.det_hough_check = QCheckBox("Use Deterministic Hough")
+        self.det_hough_check.setChecked(getattr(detector, "deterministic_hough", False))
+        layout.addRow(self.det_hough_check)
+
+        self.max_mask_cov_spin = QDoubleSpinBox()
+        self.max_mask_cov_spin.setDecimals(2)
+        self.max_mask_cov_spin.setRange(0.0, 1.0)
+        self.max_mask_cov_spin.setValue(getattr(detector, "max_mask_coverage", 0.25))
+        layout.addRow("Max Mask Coverage:", self.max_mask_cov_spin)
+
+        self.min_mask_cov_spin = QDoubleSpinBox()
+        self.min_mask_cov_spin.setDecimals(2)
+        self.min_mask_cov_spin.setRange(0.0, 1.0)
+        self.min_mask_cov_spin.setValue(getattr(detector, "min_mask_coverage", 0.05))
+        layout.addRow("Min Mask Coverage:", self.min_mask_cov_spin)
+
+        self.cov_step_spin = QDoubleSpinBox()
+        self.cov_step_spin.setDecimals(1)
+        self.cov_step_spin.setRange(0.1, 10.0)
+        self.cov_step_spin.setValue(getattr(detector, "threshold_adjust_step", 1.0))
+        layout.addRow("Coverage Adjust Step:", self.cov_step_spin)
+
+        self.post_merge_check = QCheckBox("Enable Post-Merge Filtering")
+        self.post_merge_check.setChecked(getattr(detector, "enable_post_merge", True))
+        layout.addRow(self.post_merge_check)
+
 
         # OK / Cancel
         buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
@@ -269,6 +304,7 @@ class DetectorParamsDialog(QDialog):
         pattern_widgets = [
             self.adv_thresh_label,
             self.adv_thresh_spin,
+            self.thresh_method_box,
             self.adv_len_label,
             self.adv_len_spin,
             self.adv_gap_label,
@@ -278,6 +314,13 @@ class DetectorParamsDialog(QDialog):
             self.adv_ridge_sigma_spin,
             self.adv_min_obj_spin,
             self.adv_use_skeleton_check,
+            self.median_check,
+            self.random_seed_spin,
+            self.det_hough_check,
+            self.max_mask_cov_spin,
+            self.min_mask_cov_spin,
+            self.cov_step_spin,
+            self.post_merge_check,
             self.adv_header,
         ]
         def show_row(widget, vis):
@@ -298,6 +341,17 @@ class DetectorParamsDialog(QDialog):
 
         for w in pattern_widgets:
             show_row(w, pattern)
+
+        method = self.thresh_method_box.currentText()
+        show_row(self.adv_thresh_label, pattern and method == "percentile")
+        show_row(self.adv_thresh_spin, pattern and method == "percentile")
+        cfar_widgets = [
+            self.adv_cfar_train_spin,
+            self.adv_cfar_guard_spin,
+            self.adv_cfar_pfa_spin,
+        ]
+        for w in cfar_widgets:
+            show_row(w, pattern and method == "cfar")
 
     def accept(self):
         d = self.detector
@@ -322,7 +376,6 @@ class DetectorParamsDialog(QDialog):
         d.adv_min_line_length = self.adv_len_spin.value()
         d.adv_line_gap = self.adv_gap_spin.value()
         d.adv_min_slope = self.adv_slope_spin.value()
-        d.adv_use_cfar = self.adv_use_cfar_check.isChecked()
         d.adv_cfar_train = self.adv_cfar_train_spin.value()
         d.adv_cfar_guard = self.adv_cfar_guard_spin.value()
         d.adv_cfar_pfa = self.adv_cfar_pfa_spin.value()
@@ -330,6 +383,14 @@ class DetectorParamsDialog(QDialog):
         d.adv_ridge_sigma = self.adv_ridge_sigma_spin.value()
         d.adv_min_object_size = self.adv_min_obj_spin.value()
         d.adv_use_skeleton = self.adv_use_skeleton_check.isChecked()
+        d.adv_threshold_method = self.thresh_method_box.currentText()
+        d.random_seed = self.random_seed_spin.value()
+        d.deterministic_hough = self.det_hough_check.isChecked()
+        d.use_median = self.median_check.isChecked()
+        d.max_mask_coverage = self.max_mask_cov_spin.value()
+        d.min_mask_coverage = self.min_mask_cov_spin.value()
+        d.threshold_adjust_step = self.cov_step_spin.value()
+        d.enable_post_merge = self.post_merge_check.isChecked()
         if self.method_box is not None:
             if self.method_box.currentIndex() == 1:
                 d.detection_method = "pattern"
