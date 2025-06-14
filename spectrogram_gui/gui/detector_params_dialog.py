@@ -15,9 +15,12 @@ class DetectorParamsDialog(QDialog):
         layout = QFormLayout(self)
 
         self.method_box = QComboBox()
-        self.method_box.addItems(["Peaks", "Threshold"])
-        if getattr(detector, "detection_method", "peaks") == "threshold":
+        self.method_box.addItems(["Peaks", "Threshold", "Hough"])
+        method = getattr(detector, "detection_method", "peaks")
+        if method == "threshold":
             self.method_box.setCurrentIndex(1)
+        elif method == "hough":
+            self.method_box.setCurrentIndex(2)
         layout.addRow("Detection Method:", self.method_box)
 
 
@@ -124,6 +127,18 @@ class DetectorParamsDialog(QDialog):
         self.merge_freq_diff_spin.setValue(detector.merge_max_freq_diff_hz)
         layout.addRow("Merge Max Freq Diff [Hz]:", self.merge_freq_diff_spin)
 
+        # 18) Hough threshold
+        self.hough_thresh_spin = QSpinBox()
+        self.hough_thresh_spin.setRange(1, 1000)
+        self.hough_thresh_spin.setValue(detector.hough_threshold)
+        layout.addRow("Hough Threshold:", self.hough_thresh_spin)
+
+        # 19) Hough theta steps
+        self.hough_steps_spin = QSpinBox()
+        self.hough_steps_spin.setRange(10, 720)
+        self.hough_steps_spin.setValue(detector.hough_theta_steps)
+        layout.addRow("Hough Theta Steps:", self.hough_steps_spin)
+
 
         # OK / Cancel
         buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
@@ -148,5 +163,12 @@ class DetectorParamsDialog(QDialog):
         d.max_track_freq_std_hz = self.max_std_spin.value()
         d.merge_gap_frames = self.merge_gap_spin.value()
         d.merge_max_freq_diff_hz = self.merge_freq_diff_spin.value()
-        d.detection_method = "threshold" if self.method_box.currentIndex() == 1 else "peaks"
+        d.hough_threshold = self.hough_thresh_spin.value()
+        d.hough_theta_steps = self.hough_steps_spin.value()
+        if self.method_box.currentIndex() == 1:
+            d.detection_method = "threshold"
+        elif self.method_box.currentIndex() == 2:
+            d.detection_method = "hough"
+        else:
+            d.detection_method = "peaks"
         super().accept()
