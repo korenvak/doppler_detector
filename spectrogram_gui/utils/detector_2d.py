@@ -1,5 +1,5 @@
 import numpy as np
-from skimage.feature import peak_local_max
+from scipy.ndimage import maximum_filter
 
 
 class DopplerDetector2D:
@@ -45,56 +45,38 @@ class DopplerDetector2D:
         """Find local maxima in the entire spectrogram."""
         S = self.Sxx_filt
 
-        # candidate maxima using a 3x3 footprint; reflect to avoid edge bias
-        coords = peak_local_max(
-            S,
-            footprint=np.ones((3, 3)),
-            threshold_abs=self.power_threshold,
-            threshold_rel=self.peak_prominence,
-            exclude_border=1,
-        )
+        freq_mask = (self.freqs >= self.freq_min) & (self.freqs <= self.freq_max)
+        sub = S[freq_mask]
 
-        num_t = S.shape[1]
-        peaks_per_frame = [[] for _ in range(num_t)]
-        conf_per_frame = [[] for _ in range(num_t)]
+        # local maxima with a 3x3 neighbourhood
+        local_max = maximum_filter(sub, size=3, mode="reflect") == sub
+        mask = (sub >= self.power_threshold) & local_max
 
-        if coords.size:
-            r = coords[:, 0]
-            c = coords[:, 1]
+        # prominence relative to frequency neighbours
+        above = np.vstack([sub[:1], sub[:-1]])
+        below = np.vstack([sub[1:], sub[-1:]])
+        mask &= (sub - np.maximum(above, below)) >= self.peak_prominence
 
-            # filter by frequency range
-            freq_vals = self.freqs[r]
-            mask = (freq_vals >= self.freq_min) & (freq_vals <= self.freq_max)
+        fr_idx, t_idx = np.nonzero(mask)
+        if fr_idx.size == 0:
+            return [[] for _ in range(S.shape[1])], [[] for _ in range(S.shape[1])]
 
-            # compute prominence vs neighbours
-            above_idx = np.clip(r - 1, 0, S.shape[0] - 1)
-            below_idx = np.clip(r + 1, 0, S.shape[0] - 1)
-            above = S[above_idx, c]
-            below = S[below_idx, c]
-            center = S[r, c]
-            mask &= (center - np.maximum(above, below)) >= self.peak_prominence
+        global_f = np.nonzero(freq_mask)[0][fr_idx]
+        conf = S[global_f, t_idx]
 
-            r = r[mask]
-            c = c[mask]
-            center = center[mask]
+        order = np.lexsort((-conf, t_idx))
+        global_f = global_f[order]
+        t_idx = t_idx[order]
+        conf = conf[order]
 
-            # group by time index
-            order = np.argsort(c)
-            r = r[order]
-            c = c[order]
-            center = center[order]
+        peaks_per_frame = [[] for _ in range(S.shape[1])]
+        conf_per_frame = [[] for _ in range(S.shape[1])]
 
-            # fill lists
-            for freq_idx, time_idx, conf in zip(r, c, center):
-                peaks_per_frame[time_idx].append(freq_idx)
-                conf_per_frame[time_idx].append(conf)
-
-        # limit number of peaks per time frame
-        for ti in range(num_t):
-            if len(peaks_per_frame[ti]) > self.max_peaks_per_frame:
-                order = np.argsort(conf_per_frame[ti])[::-1][: self.max_peaks_per_frame]
-                peaks_per_frame[ti] = [peaks_per_frame[ti][i] for i in order]
-                conf_per_frame[ti] = [conf_per_frame[ti][i] for i in order]
+        unique_t, start, counts = np.unique(t_idx, return_index=True, return_counts=True)
+        for t, s, cnt in zip(unique_t, start, counts):
+            sel = slice(s, s + min(cnt, self.max_peaks_per_frame))
+            peaks_per_frame[t] = global_f[sel].tolist()
+            conf_per_frame[t] = conf[sel].tolist()
 
         return peaks_per_frame, conf_per_frame
 
