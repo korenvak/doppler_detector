@@ -393,11 +393,8 @@ class MainWindow(QMainWindow):
                 self.detector.times    = times
                 self.detector.Sxx_filt = Sxx
 
-                if self.detector.detection_method == "threshold":
-                    tracks = self.detector.detect_tracks_by_threshold()
-                    raw_tracks = self.detector.merge_tracks(tracks)
-                elif self.detector.detection_method == "hough":
-                    tracks = self.detector.detect_tracks_hough()
+                if self.detector.detection_method == "advanced":
+                    tracks = self.detector.detect_tracks_advanced()
                     raw_tracks = self.detector.merge_tracks(tracks)
                 else:
                     peaks  = self.detector.detect_peaks_per_frame()
@@ -405,10 +402,8 @@ class MainWindow(QMainWindow):
                     raw_tracks = self.detector.merge_tracks(tracks)
 
             else:
-                if self.detector.detection_method == "threshold":
-                    raw_tracks = self.detector.run_threshold_detection(self.current_file)
-                elif self.detector.detection_method == "hough":
-                    raw_tracks = self.detector.run_hough_detection(self.current_file)
+                if self.detector.detection_method == "advanced":
+                    raw_tracks = self.detector.run_advanced_detection(self.current_file)
                 else:
                     raw_tracks = self.detector.run_detection(self.current_file)
 

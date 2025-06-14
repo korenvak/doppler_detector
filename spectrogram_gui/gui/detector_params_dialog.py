@@ -15,12 +15,10 @@ class DetectorParamsDialog(QDialog):
         layout = QFormLayout(self)
 
         self.method_box = QComboBox()
-        self.method_box.addItems(["Peaks", "Threshold", "Hough"])
+        self.method_box.addItems(["Peaks", "Advanced"])
         method = getattr(detector, "detection_method", "peaks")
-        if method == "threshold":
+        if method == "advanced":
             self.method_box.setCurrentIndex(1)
-        elif method == "hough":
-            self.method_box.setCurrentIndex(2)
         layout.addRow("Detection Method:", self.method_box)
 
 
@@ -129,19 +127,26 @@ class DetectorParamsDialog(QDialog):
         self.merge_freq_diff_spin.setValue(detector.merge_max_freq_diff_hz)
         layout.addRow("Merge Max Freq Diff [Hz]:", self.merge_freq_diff_spin)
 
-        # 18) Hough threshold
-        self.hough_thresh_label = QLabel("Hough Threshold:")
-        self.hough_thresh_spin = QSpinBox()
-        self.hough_thresh_spin.setRange(1, 1000)
-        self.hough_thresh_spin.setValue(detector.hough_threshold)
-        layout.addRow(self.hough_thresh_label, self.hough_thresh_spin)
+        # 18) Advanced mask percentile
+        self.adv_thresh_label = QLabel("Mask Percentile:")
+        self.adv_thresh_spin = QSpinBox()
+        self.adv_thresh_spin.setRange(50, 100)
+        self.adv_thresh_spin.setValue(detector.adv_threshold_percentile)
+        layout.addRow(self.adv_thresh_label, self.adv_thresh_spin)
 
-        # 19) Hough theta steps
-        self.hough_steps_label = QLabel("Hough Theta Steps:")
-        self.hough_steps_spin = QSpinBox()
-        self.hough_steps_spin.setRange(10, 720)
-        self.hough_steps_spin.setValue(detector.hough_theta_steps)
-        layout.addRow(self.hough_steps_label, self.hough_steps_spin)
+        # 19) Advanced line length
+        self.adv_len_label = QLabel("Min Line Length:")
+        self.adv_len_spin = QSpinBox()
+        self.adv_len_spin.setRange(1, 1000)
+        self.adv_len_spin.setValue(detector.adv_min_line_length)
+        layout.addRow(self.adv_len_label, self.adv_len_spin)
+
+        # 20) Advanced line gap
+        self.adv_gap_label = QLabel("Line Gap:")
+        self.adv_gap_spin = QSpinBox()
+        self.adv_gap_spin.setRange(1, 100)
+        self.adv_gap_spin.setValue(detector.adv_line_gap)
+        layout.addRow(self.adv_gap_label, self.adv_gap_spin)
 
 
         # OK / Cancel
@@ -155,13 +160,14 @@ class DetectorParamsDialog(QDialog):
 
     def update_visibility(self):
         peaks = self.method_box.currentIndex() == 0
-        hough = self.method_box.currentIndex() == 2
+        advanced = self.method_box.currentIndex() == 1
         for w in [self.peak_prom_label, self.peak_prom_spin,
                   self.max_peaks_label, self.max_peaks_spin]:
             w.setVisible(peaks)
-        for w in [self.hough_thresh_label, self.hough_thresh_spin,
-                  self.hough_steps_label, self.hough_steps_spin]:
-            w.setVisible(hough)
+        for w in [self.adv_thresh_label, self.adv_thresh_spin,
+                  self.adv_len_label, self.adv_len_spin,
+                  self.adv_gap_label, self.adv_gap_spin]:
+            w.setVisible(advanced)
 
     def accept(self):
         d = self.detector
@@ -180,12 +186,11 @@ class DetectorParamsDialog(QDialog):
         d.max_track_freq_std_hz = self.max_std_spin.value()
         d.merge_gap_frames = self.merge_gap_spin.value()
         d.merge_max_freq_diff_hz = self.merge_freq_diff_spin.value()
-        d.hough_threshold = self.hough_thresh_spin.value()
-        d.hough_theta_steps = self.hough_steps_spin.value()
+        d.adv_threshold_percentile = self.adv_thresh_spin.value()
+        d.adv_min_line_length = self.adv_len_spin.value()
+        d.adv_line_gap = self.adv_gap_spin.value()
         if self.method_box.currentIndex() == 1:
-            d.detection_method = "threshold"
-        elif self.method_box.currentIndex() == 2:
-            d.detection_method = "hough"
+            d.detection_method = "advanced"
         else:
             d.detection_method = "peaks"
         super().accept()
