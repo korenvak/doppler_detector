@@ -14,6 +14,7 @@ from spectrogram_gui.utils.filter_utils import (
     apply_ale,
     apply_wiener,
     apply_tv_denoising,
+    apply_tv_denoising_2d,
 )
 
 # Default frequency range (Hz)
@@ -125,11 +126,16 @@ class DopplerDetector(Detector):
         """
         Delegate spectrogram to spectrogram_gui's compute_spectrogram.
         """
-        freqs, times, Sxx, _ = sg_compute_spec(y, sr, filepath, params=self.spectrogram_params)
-        self.freqs    = freqs
-        self.times    = times
-        self.Sxx_filt = Sxx
-        return freqs, times, Sxx, Sxx
+        freqs, times, Sxx_norm, Sxx_filt = sg_compute_spec(
+            y, sr, filepath, params=self.spectrogram_params
+        )
+        if self.use_tv_denoising:
+            from spectrogram_gui.utils.filter_utils import apply_tv_denoising_2d
+            Sxx_filt = apply_tv_denoising_2d(Sxx_filt, weight=self.tv_denoising_weight)
+        self.freqs = freqs
+        self.times = times
+        self.Sxx_filt = Sxx_filt
+        return freqs, times, Sxx_norm, Sxx_filt
 
     def detect_peaks_per_frame(self):
         """

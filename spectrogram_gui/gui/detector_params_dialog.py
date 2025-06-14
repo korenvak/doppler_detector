@@ -138,7 +138,7 @@ class DetectorParamsDialog(QDialog):
 
         self.tv_weight_spin = QDoubleSpinBox()
         self.tv_weight_spin.setDecimals(2)
-        self.tv_weight_spin.setRange(0.01, 1.0)
+        self.tv_weight_spin.setRange(0.05, 0.3)
         self.tv_weight_spin.setSingleStep(0.01)
         self.tv_weight_spin.setValue(getattr(detector, "tv_denoising_weight", 0.1))
         layout.addRow("TV Denoising Weight:", self.tv_weight_spin)

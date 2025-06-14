@@ -1,6 +1,13 @@
 from PyQt5.QtWidgets import (
-    QDialog, QVBoxLayout, QHBoxLayout,
-    QLabel, QLineEdit, QPushButton, QMessageBox
+    QDialog,
+    QVBoxLayout,
+    QHBoxLayout,
+    QLabel,
+    QLineEdit,
+    QPushButton,
+    QMessageBox,
+    QCheckBox,
+    QDoubleSpinBox,
 )
 import numpy as np
 from scipy.signal import butter, sosfilt
@@ -32,6 +39,17 @@ class FilterDialog(QDialog):
             freq_layout.addWidget(self.high_edit)
 
         layout.addLayout(freq_layout)
+
+        self.tv_chk = QCheckBox("TV Denoising")
+        tv_row = QHBoxLayout()
+        tv_row.addWidget(self.tv_chk)
+        tv_row.addWidget(QLabel("Weight:"))
+        self.tv_weight_spin = QDoubleSpinBox()
+        self.tv_weight_spin.setRange(0.05, 0.3)
+        self.tv_weight_spin.setSingleStep(0.01)
+        self.tv_weight_spin.setValue(0.1)
+        tv_row.addWidget(self.tv_weight_spin)
+        layout.addLayout(tv_row)
 
         btns = QHBoxLayout()
         btns.addWidget(QPushButton("Cancel", clicked=self.reject))
@@ -86,5 +104,8 @@ class FilterDialog(QDialog):
         freqs, times, Sxx, _ = compute_spectrogram(
             new_wave, sr, "", params=self.main.spectrogram_params
         )
+        if self.tv_chk.isChecked():
+            from spectrogram_gui.utils.filter_utils import apply_tv_denoising_2d
+            Sxx = apply_tv_denoising_2d(Sxx, weight=self.tv_weight_spin.value())
         self.main.canvas.plot_spectrogram(freqs, times, Sxx, self.main.canvas.start_time, maintain_view=True)
         self.accept()
