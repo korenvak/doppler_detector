@@ -164,6 +164,7 @@ def apply_ale(
                 slope=slope,
                 freq_domain=False,
                 fast_mode=fast_mode,
+                return_error=return_error,
             )
         Zxx_filt = out_mag * np.exp(1j * phase)
         _, x_out = istft(Zxx_filt, nperseg=n_fft, noverlap=n_fft - hop_length)
@@ -312,12 +313,31 @@ def apply_lowpass(x: np.ndarray, cutoff: float, sr: int, order: int = 4) -> np.n
     return sosfilt(sos, x.astype(np.float64, copy=False))
 
 
-def apply_tv_denoising(x: np.ndarray, weight: float = 0.1) -> np.ndarray:
-    """Total variation denoising using skimage."""
+def apply_tv_denoising(
+    x: np.ndarray,
+    weight: float = 0.1,
+    n_fft: int = 1024,
+    hop_length: int = 512,
+) -> np.ndarray:
+    """Total variation denoising in the STFT domain."""
     from skimage.restoration import denoise_tv_chambolle
 
     x = x.astype(np.float64, copy=False)
-    return denoise_tv_chambolle(x, weight=weight)
+    f, t, Zxx = stft(x, nperseg=n_fft, noverlap=n_fft - hop_length)
+    mag = np.abs(Zxx)
+    phase = np.angle(Zxx)
+    mag_denoised = denoise_tv_chambolle(mag, weight=weight, channel_axis=None)
+    Zxx_filt = mag_denoised * np.exp(1j * phase)
+    _, x_out = istft(Zxx_filt, nperseg=n_fft, noverlap=n_fft - hop_length)
+    if len(x_out) > len(x):
+        x_out = x_out[: len(x)]
+    else:
+        x_out = np.pad(x_out, (0, len(x) - len(x_out)))
+    in_rms = np.sqrt(np.mean(x ** 2))
+    out_rms = np.sqrt(np.mean(x_out ** 2)) + 1e-8
+    if out_rms > 0:
+        x_out *= in_rms / out_rms
+    return x_out
 
 
 def apply_tv_denoising_2d(Sxx: np.ndarray, weight: float = 0.1) -> np.ndarray:
