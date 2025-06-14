@@ -55,17 +55,18 @@ class DopplerDetector(Detector):
         smooth_sigma=1.5,
         median_filter_size=(3, 1),
         detection_method="peaks",
-        adv_threshold_percentile=85,
-        adv_min_line_length=40,
-        adv_line_gap=8,
+        adv_threshold_percentile=80,
+        adv_min_line_length=30,
+        adv_line_gap=10,
         adv_use_cfar=True,
         adv_use_ridge=True,
-        adv_ridge_sigma=3.0,
+        adv_ridge_sigma=2.5,
         adv_cfar_train=20,
         adv_cfar_guard=2,
         adv_cfar_pfa=0.001,
-        adv_min_object_size=50,
+        adv_min_object_size=30,
         adv_use_skeleton=True,
+        adv_min_slope=0.3,
         fast_mode=False,
     ):
         # detection parameters
@@ -98,6 +99,7 @@ class DopplerDetector(Detector):
         self.adv_cfar_pfa = adv_cfar_pfa
         self.adv_min_object_size = adv_min_object_size
         self.adv_use_skeleton = adv_use_skeleton
+        self.adv_min_slope = adv_min_slope
         self.fast_mode = fast_mode
 
         # will be set in compute_spectrogram
@@ -320,7 +322,7 @@ class DopplerDetector(Detector):
         else:
             ridge_m = np.ones_like(base_m, dtype=bool)
 
-        mask = base_m & (cfar_m | ridge_m)
+        mask = base_m & ridge_m
         print(
             "Base:", base_m.sum(),
             "CFAR:", cfar_m.sum(),
@@ -337,8 +339,18 @@ class DopplerDetector(Detector):
             line_length=self.adv_min_line_length,
             line_gap=self.adv_line_gap,
         )
+        filtered_lines = []
+        for (x0, y0), (x1, y1) in lines:
+            dx = x1 - x0
+            dy = y1 - y0
+            if dx == 0:
+                continue
+            slope = dy / dx
+            if abs(slope) >= self.adv_min_slope:
+                filtered_lines.append(((x0, y0), (x1, y1)))
+
         tracks = []
-        for line in lines:
+        for line in filtered_lines:
             (x0, y0), (x1, y1) = line
             num = max(abs(x1 - x0), abs(y1 - y0)) + 1
             xs = np.linspace(x0, x1, num).astype(int)

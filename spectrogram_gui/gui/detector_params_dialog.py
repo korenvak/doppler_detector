@@ -159,6 +159,15 @@ class DetectorParamsDialog(QDialog):
         self.adv_gap_spin.setToolTip("Maximum gap between line segments")
         layout.addRow(self.adv_gap_label, self.adv_gap_spin)
 
+        self.adv_slope_label = QLabel("Min Line Slope:")
+        self.adv_slope_spin = QDoubleSpinBox()
+        self.adv_slope_spin.setRange(0.0, 10.0)
+        self.adv_slope_spin.setSingleStep(0.05)
+        self.adv_slope_spin.setDecimals(2)
+        self.adv_slope_spin.setValue(detector.adv_min_slope)
+        self.adv_slope_spin.setToolTip("Minimum absolute slope of Hough lines")
+        layout.addRow(self.adv_slope_label, self.adv_slope_spin)
+
         # use CFAR
         self.adv_use_cfar_check = QCheckBox("Use CFAR")
         self.adv_use_cfar_check.setChecked(detector.adv_use_cfar)
@@ -241,6 +250,8 @@ class DetectorParamsDialog(QDialog):
             self.gap_max_jump_spin,
             self.max_peaks_label,
             self.max_peaks_spin,
+            self.min_avg_power_spin,
+            self.max_std_spin,
         ]
 
         adv_widgets = [
@@ -250,6 +261,8 @@ class DetectorParamsDialog(QDialog):
             self.adv_len_spin,
             self.adv_gap_label,
             self.adv_gap_spin,
+            self.adv_slope_label,
+            self.adv_slope_spin,
             self.adv_use_cfar_check,
             self.adv_cfar_train_spin,
             self.adv_cfar_guard_spin,
@@ -287,6 +300,7 @@ class DetectorParamsDialog(QDialog):
         d.adv_threshold_percentile = self.adv_thresh_spin.value()
         d.adv_min_line_length = self.adv_len_spin.value()
         d.adv_line_gap = self.adv_gap_spin.value()
+        d.adv_min_slope = self.adv_slope_spin.value()
         d.adv_use_cfar = self.adv_use_cfar_check.isChecked()
         d.adv_cfar_train = self.adv_cfar_train_spin.value()
         d.adv_cfar_guard = self.adv_cfar_guard_spin.value()
