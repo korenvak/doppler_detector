@@ -464,13 +464,17 @@ class MainWindow(QMainWindow):
         if not self.current_file:
             return
 
-        dlg = DetectorParamsDialog(self, detector=self.detector, mode="advanced")
+        dlg = DetectorParamsDialog(self, detector=self.detector, mode="both")
         if dlg.exec_() != dlg.Accepted:
             return
 
-        self.detector.detection_method = "advanced"
         start_time = datetime.now()
-        raw_tracks = self.detector.run_advanced_detection(self.current_file)
+        if self.detector.detection_method == "pattern":
+            tracks = self.detector.detect_tracks_pattern()
+            raw_tracks = self.detector.merge_tracks(tracks)
+        else:
+            tracks = self.detector.detect_tracks_advanced()
+            raw_tracks = self.detector.merge_tracks(tracks)
         processed = []
         for tr in raw_tracks:
             t_idx = np.array([pt[0] for pt in tr], dtype=int)
@@ -483,8 +487,10 @@ class MainWindow(QMainWindow):
         self.detection_manager.record(self.canvas.auto_tracks_items.copy())
         self.add_undo_action(("detection", None))
         dur = (datetime.now() - start_time).total_seconds()
-        self.param_panel.update_stats(len(processed), "advanced", dur)
-        self.status_label.setText(f"Advanced detection: {len(processed)} tracks found.")
+        self.param_panel.update_stats(len(processed), self.detector.detection_method, dur)
+        self.status_label.setText(
+            f"{self.detector.detection_method.capitalize()} detection: {len(processed)} tracks found."
+        )
 
     def select_folder(self):
         folder = QFileDialog.getExistingDirectory(self, "Select Folder")
@@ -551,7 +557,12 @@ class MainWindow(QMainWindow):
         # load audio & spectrogram
         try:
             y, sr = load_audio_with_filters(path)
-            freqs, times, Sxx, _ = compute_spectrogram(y, sr, path, params=self.spectrogram_params)
+            freqs, times, Sxx, Sxx_filt = compute_spectrogram(
+                y, sr, path, params=self.spectrogram_params
+            )
+            self.detector.freqs = freqs
+            self.detector.times = times
+            self.detector.Sxx_filt = Sxx_filt
         except Exception as e:
             QMessageBox.critical(self, "Spectrogram Error", str(e))
             return

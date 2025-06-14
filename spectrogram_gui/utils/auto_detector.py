@@ -442,7 +442,7 @@ class DopplerDetector(Detector):
 
     def detect_tracks_pattern(self):
         """Detect tracks using the AutoPatternDetector helper."""
-        from .pattern_detector import AutoPatternDetector
+        from .auto_pattern_detector import AutoPatternDetector
 
         pd = AutoPatternDetector(self)
         return pd.detect_tracks_auto()
