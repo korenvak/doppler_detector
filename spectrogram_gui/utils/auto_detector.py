@@ -11,10 +11,10 @@ from spectrogram_gui.utils.audio_utils import load_audio_with_filters
 from spectrogram_gui.utils.spectrogram_utils import compute_spectrogram as sg_compute_spec
 from spectrogram_gui.utils.filter_utils import (
     apply_nlms,
-    apply_ale,
+    apply_ale_2d_doppler_wave,
     apply_wiener_adaptive,
-    apply_tv_denoising,
-    apply_tv_denoising_2d,
+    apply_tv_denoising_doppler_wave,
+    apply_tv_denoising_doppler,
 )
 
 # Default frequency range (Hz)
@@ -130,8 +130,7 @@ class DopplerDetector(Detector):
             y, sr, filepath, params=self.spectrogram_params
         )
         if self.use_tv_denoising:
-            from spectrogram_gui.utils.filter_utils import apply_tv_denoising_2d
-            Sxx_filt = apply_tv_denoising_2d(Sxx_filt, weight=self.tv_denoising_weight)
+            Sxx_filt = apply_tv_denoising_doppler(Sxx_filt, weight_freq=self.tv_denoising_weight)
         self.freqs = freqs
         self.times = times
         self.Sxx_filt = Sxx_filt
@@ -456,15 +455,13 @@ class AdaptiveFilterDetector(DopplerDetector):
         if order > 1:
             y = apply_nlms(y, mu=self.nlms_mu, filter_order=order)
         if self.ale_delay is None or order > self.ale_delay:
-            y = apply_ale(
+            y = apply_ale_2d_doppler_wave(
                 y,
-                delay=self.ale_delay,
+                delay=self.ale_delay if self.ale_delay is not None else 3,
                 mu=self.ale_mu,
                 filter_order=order,
-                freq_domain=True,
-                return_error=True,
             )
         y = apply_wiener_adaptive(y, window_size=1024)
         if self.use_tv_denoising:
-            y = apply_tv_denoising(y, weight=self.tv_denoising_weight)
+            y = apply_tv_denoising_doppler_wave(y, weight=self.tv_denoising_weight)
         return y, sr

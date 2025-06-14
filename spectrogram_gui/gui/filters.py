@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from PyQt5.QtWidgets import (
     QDialog,
     QVBoxLayout,
@@ -15,7 +17,7 @@ from PyQt5.QtWidgets import (
 from spectrogram_gui.utils.spectrogram_utils import compute_spectrogram
 from spectrogram_gui.utils.filter_utils import (
     apply_nlms,
-    apply_ale,
+    apply_ale_2d_doppler_wave,
     apply_gaussian,
     apply_median,
     apply_gabor,
@@ -39,12 +41,12 @@ class CombinedFilterDialog(QDialog):
         self.filter_box = QComboBox()
         self.filter_box.addItems([
             "NLMS",
-            "ALE",
-            "Wiener",
+            "ALE 2D Doppler",
+            "Wiener Adaptive",
             "Gaussian",
             "Median",
             "Gabor",
-            "TV Denoise 2D",
+            "TV Denoise Doppler",
             "Track Follow",
             "Enhance Doppler",
         ])
@@ -229,22 +231,21 @@ class CombinedFilterDialog(QDialog):
                 QMessageBox.warning(self, "Too Short", "Segment shorter than NLMS order.")
                 return
             out = apply_nlms(out, mu=self.nlms_spin.value(), filter_order=order)
-        elif filt == "ALE":
+        elif filt == "ALE 2D Doppler":
             if len(out) < order:
                 QMessageBox.warning(self, "Too Short", "Segment shorter than ALE order.")
                 return
             delay_val = self.ale_delay_spin.value()
             delay = None if delay_val == 0 else delay_val
-            out = apply_ale(
+            from spectrogram_gui.utils.filter_utils import apply_ale_2d_doppler_wave
+            out = apply_ale_2d_doppler_wave(
                 out,
-                delay=delay,
+                delay=delay if delay is not None else 3,
                 mu=self.ale_spin.value(),
                 filter_order=order,
                 slope=self.ale_slope_spin.value(),
-                freq_domain=True,
-                return_error=True,
             )
-        elif filt == "Wiener":
+        elif filt == "Wiener Adaptive":
             from spectrogram_gui.utils.filter_utils import apply_wiener_adaptive
             out = apply_wiener_adaptive(out, window_size=1024)
         elif filt == "Gaussian":
@@ -253,9 +254,9 @@ class CombinedFilterDialog(QDialog):
             out = apply_median(out, size=self.median_spin.value())
         elif filt == "Gabor":
             out = apply_gabor(out, freq=self.gabor_freq_spin.value(), sigma=self.gabor_sigma_spin.value())
-        elif filt == "TV Denoise 2D":
-            from spectrogram_gui.utils.filter_utils import apply_tv_denoising
-            out = apply_tv_denoising(out, weight=self.tv_weight_spin.value())
+        elif filt == "TV Denoise Doppler":
+            from spectrogram_gui.utils.filter_utils import apply_tv_denoising_doppler_wave
+            out = apply_tv_denoising_doppler_wave(out, weight=self.tv_weight_spin.value())
         elif filt == "Track Follow":
             from spectrogram_gui.utils.filter_utils import enhance_doppler_tracks
             out = enhance_doppler_tracks(

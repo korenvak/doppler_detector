@@ -1,5 +1,7 @@
 # File: filter_utils.py
 
+from __future__ import annotations
+
 import numpy as np
 import time
 from scipy.signal import stft, istft, butter, sosfilt
@@ -226,24 +228,6 @@ def apply_ale(
     return result if not return_metrics else (result, best_delay, metrics[best_idx])
 
 
-def apply_wiener(x: np.ndarray, noise_db: float = -20, window_size: int = 1024, overlap: int = 512) -> np.ndarray:
-    """
-    Wiener filter via spectral subtraction.
-    x: input signal segment
-    noise_db: noise estimate in dBFS
-    window_size, overlap: STFT parameters
-    Returns enhanced time-domain signal.
-    """
-    noise_pow = 10 ** (noise_db / 10)
-    f, t, Zxx = stft(x, nperseg=window_size, noverlap=overlap)
-    Sxx = np.abs(Zxx) ** 2
-    G = Sxx / (Sxx + noise_pow)
-    Zxx_w = Zxx * G
-    _, x_wiener = istft(Zxx_w, nperseg=window_size, noverlap=overlap)
-    if len(x_wiener) > len(x):
-        return x_wiener[:len(x)]
-    else:
-        return np.pad(x_wiener, (0, len(x) - len(x_wiener)))
 
 
 def apply_gaussian(x: np.ndarray, sigma: float = 1.0) -> np.ndarray:
@@ -277,38 +261,6 @@ def apply_lowpass(x: np.ndarray, cutoff: float, sr: int, order: int = 4) -> np.n
     return sosfilt(sos, x.astype(np.float64, copy=False))
 
 
-def apply_tv_denoising(
-    x: np.ndarray,
-    weight: float = 0.1,
-    n_fft: int = 1024,
-    hop_length: int = 512,
-) -> np.ndarray:
-    """Total variation denoising in the STFT domain."""
-    from skimage.restoration import denoise_tv_chambolle
-
-    x = x.astype(np.float64, copy=False)
-    f, t, Zxx = stft(x, nperseg=n_fft, noverlap=n_fft - hop_length)
-    mag = np.abs(Zxx)
-    phase = np.angle(Zxx)
-    mag_denoised = denoise_tv_chambolle(mag, weight=weight, channel_axis=None)
-    Zxx_filt = mag_denoised * np.exp(1j * phase)
-    _, x_out = istft(Zxx_filt, nperseg=n_fft, noverlap=n_fft - hop_length)
-    if len(x_out) > len(x):
-        x_out = x_out[: len(x)]
-    else:
-        x_out = np.pad(x_out, (0, len(x) - len(x_out)))
-    in_rms = np.sqrt(np.mean(x ** 2))
-    out_rms = np.sqrt(np.mean(x_out ** 2)) + 1e-8
-    if out_rms > 0:
-        x_out *= in_rms / out_rms
-    return x_out
-
-
-def apply_tv_denoising_2d(Sxx: np.ndarray, weight: float = 0.1) -> np.ndarray:
-    """Total variation denoising for spectrograms (2D)."""
-    from skimage.restoration import denoise_tv_chambolle
-
-    return denoise_tv_chambolle(Sxx, weight=weight, channel_axis=None)
 
 
 def apply_wiener_adaptive(x: np.ndarray, window_size: int = 1024) -> np.ndarray:
@@ -352,6 +304,26 @@ def apply_tv_denoising_doppler(
     return denoise_tv_chambolle(Sxx, weight=weight_freq, channel_axis=None)
 
 
+def apply_tv_denoising_doppler_wave(
+    x: np.ndarray,
+    weight: float = 0.1,
+    n_fft: int = 1024,
+    hop_length: int = 512,
+) -> np.ndarray:
+    """Apply Doppler-preserving TV denoising in the STFT domain."""
+    f, t, Zxx = stft(x, nperseg=n_fft, noverlap=n_fft - hop_length)
+    mag = np.abs(Zxx) ** 2
+    phase = np.angle(Zxx)
+    mag_f = apply_tv_denoising_doppler(mag, weight_freq=weight)
+    Zxx_f = np.sqrt(mag_f) * np.exp(1j * phase)
+    _, out = istft(Zxx_f, nperseg=n_fft, noverlap=n_fft - hop_length)
+    if len(out) > len(x):
+        out = out[: len(x)]
+    else:
+        out = np.pad(out, (0, len(x) - len(out)))
+    return out
+
+
 def apply_ale_2d_doppler(
     Sxx: np.ndarray,
     track_width: int = 5,
@@ -377,6 +349,34 @@ def apply_ale_2d_doppler(
             return_error=False,
         )
         out[i] = filt
+    return out
+
+
+def apply_ale_2d_doppler_wave(
+    x: np.ndarray,
+    delay: int = 3,
+    mu: float = 0.01,
+    filter_order: int = 32,
+    slope: float = 0.0,
+    n_fft: int = 1024,
+    hop_length: int = 512,
+) -> np.ndarray:
+    """Convenience wrapper applying ALE 2D Doppler in the STFT domain."""
+    f, t, Zxx = stft(x, nperseg=n_fft, noverlap=n_fft - hop_length)
+    mag = np.abs(Zxx)
+    phase = np.angle(Zxx)
+    Sxx_f = apply_ale_2d_doppler(
+        mag,
+        delay=delay,
+        mu=mu,
+        filter_order=filter_order,
+    )
+    Zxx_f = Sxx_f * np.exp(1j * phase)
+    _, out = istft(Zxx_f, nperseg=n_fft, noverlap=n_fft - hop_length)
+    if len(out) > len(x):
+        out = out[: len(x)]
+    else:
+        out = np.pad(out, (0, len(x) - len(out)))
     return out
 
 
