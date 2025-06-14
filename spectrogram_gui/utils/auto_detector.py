@@ -1,8 +1,11 @@
 import numpy as np
 import time
 from tqdm import tqdm
-from scipy.ndimage import gaussian_filter, median_filter, label
-from scipy.signal import find_peaks
+from scipy.ndimage import gaussian_filter, median_filter, label, laplace, binary_opening
+from scipy.signal import find_peaks, wiener
+from skimage.transform import probabilistic_hough_line
+from skimage.feature import hessian_matrix, hessian_matrix_eigvals
+from skimage.morphology import remove_small_objects
 # use your spectrogram and audio‐loading utils instead of soundfile + scipy.spectrogram
 from spectrogram_gui.utils.audio_utils import load_audio_with_filters
 from spectrogram_gui.utils.spectrogram_utils import compute_spectrogram as sg_compute_spec
@@ -52,8 +55,9 @@ class DopplerDetector(Detector):
         smooth_sigma=1.5,
         median_filter_size=(3, 1),
         detection_method="peaks",
-        hough_threshold=50,
-        hough_theta_steps=180,
+        adv_threshold_percentile=90,
+        adv_min_line_length=50,
+        adv_line_gap=10,
         fast_mode=False,
     ):
         # detection parameters
@@ -75,8 +79,9 @@ class DopplerDetector(Detector):
         self.smooth_sigma = smooth_sigma
         self.median_filter_size = median_filter_size
         self.detection_method = detection_method
-        self.hough_threshold = hough_threshold
-        self.hough_theta_steps = hough_theta_steps
+        self.adv_threshold_percentile = adv_threshold_percentile
+        self.adv_min_line_length = adv_min_line_length
+        self.adv_line_gap = adv_line_gap
         self.fast_mode = fast_mode
 
         # will be set in compute_spectrogram
@@ -247,89 +252,69 @@ class DopplerDetector(Detector):
                     merged.append(e)
         return [e["track"] for e in merged]
 
-    def detect_tracks_by_threshold(self):
-        """Detect tracks using simple thresholded connected components."""
+    def _preprocess_spectrogram(self, Sxx):
+        S = np.log1p(Sxx)
+        S = wiener(S, (5, 5))
+        S = S - 0.3 * laplace(S)
+        return S
+
+    def _cfar(self, Sxx, num_train=20, num_guard=2, pfa=0.001):
+        n_freq, _ = Sxx.shape
+        alpha = num_train * (pfa ** (-1 / num_train) - 1)
+        mask = np.zeros_like(Sxx, dtype=bool)
+        for fi in range(num_guard + num_train, n_freq - num_guard - num_train):
+            up = Sxx[fi - num_guard - num_train : fi - num_guard]
+            down = Sxx[fi + num_guard + 1 : fi + num_guard + num_train + 1]
+            if up.size and down.size:
+                noise = 0.5 * (up.mean(axis=0) + down.mean(axis=0))
+                thr = alpha * noise
+                mask[fi] = Sxx[fi] > thr
+        return mask
+
+    def _ridge_detection(self, Sxx, sigma=3.0):
+        H = hessian_matrix(Sxx, sigma=sigma, order='rc')
+        ridges, _ = hessian_matrix_eigvals(H)
+        thr = np.percentile(np.abs(ridges), 85)
+        return np.abs(ridges) > thr
+
+    def detect_tracks_advanced(self):
         start_t = time.perf_counter()
-        S = np.log1p(self.Sxx_filt)
-        thr = np.percentile(S, (1 - self.power_threshold) * 100)
-        i_min = np.searchsorted(self.freqs, 200, side="left")
-        i_max = np.searchsorted(self.freqs, 2000, side="right") - 1
-        slice_S = S[i_min:i_max + 1]
-        mask = slice_S >= thr
-        labels, n = label(mask)
+        S = self._preprocess_spectrogram(self.Sxx_filt)
+        i_min = np.searchsorted(self.freqs, self.freq_min, side='left')
+        i_max = np.searchsorted(self.freqs, self.freq_max, side='right') - 1
+        i_min = max(i_min, 0)
+        i_max = min(i_max, len(self.freqs) - 1)
+        band = S[i_min:i_max + 1]
+        cfar_m = self._cfar(band)
+        ridge_m = self._ridge_detection(band)
+        mask = binary_opening(cfar_m & ridge_m, iterations=1)
+        mask = remove_small_objects(mask.astype(bool), min_size=50)
+        lines = probabilistic_hough_line(
+            mask.astype(np.uint8),
+            threshold=10,
+            line_length=self.adv_min_line_length,
+            line_gap=self.adv_line_gap,
+        )
         tracks = []
-        for lbl in range(1, n + 1):
-            coords = np.argwhere(labels == lbl)
-            if coords.size == 0:
-                continue
-            ti_min = coords[:, 1].min()
-            ti_max = coords[:, 1].max()
+        for line in lines:
+            (x0, y0), (x1, y1) = line
+            num = max(abs(x1 - x0), abs(y1 - y0)) + 1
+            xs = np.linspace(x0, x1, num).astype(int)
+            ys = np.linspace(y0, y1, num).astype(int)
             tr = []
-            for ti in range(ti_min, ti_max + 1):
-                rows = coords[coords[:, 1] == ti, 0]
-                if rows.size == 0:
-                    continue
-                best = rows[np.argmax(slice_S[rows, ti])]
-                tr.append((ti, best + i_min))
+            for xi, yi in zip(xs, ys):
+                if 0 <= xi < mask.shape[1] and 0 <= yi < mask.shape[0]:
+                    tr.append((xi, yi + i_min))
             if tr:
                 tracks.append(tr)
-        print(f"[Threshold] detection {time.perf_counter()-start_t:.2f}s")
+        print(f"[Advanced] detection {time.perf_counter()-start_t:.2f}s")
         return tracks
 
-    def detect_tracks_hough(self):
-        """Detect approximate straight-line tracks using a simple Hough transform."""
-        start_t = time.perf_counter()
-        S = np.log1p(self.Sxx_filt)
-        i_min = np.searchsorted(self.freqs, 200, side="left")
-        i_max = np.searchsorted(self.freqs, 2000, side="right") - 1
-        slice_S = S[i_min:i_max + 1]
-        thr = np.percentile(slice_S, (1 - self.power_threshold) * 100)
-        binary = slice_S >= thr
-        rows, cols = binary.shape
-        thetas = np.linspace(-np.deg2rad(30), np.deg2rad(30), self.hough_theta_steps)
-        diag = int(np.ceil(np.hypot(rows, cols)))
-        rhos = np.arange(-diag, diag + 1)
-        accumulator = np.zeros((len(thetas), len(rhos)), dtype=np.int32)
-        ys, xs = np.nonzero(binary)
-        xs = xs.astype(np.float64)
-        ys = ys.astype(np.float64)
-        cos_t = np.cos(thetas)
-        sin_t = np.sin(thetas)
-        for ti, (c, s) in enumerate(zip(cos_t, sin_t)):
-            rho_vals = np.rint(xs * c + ys * s).astype(np.int64) + diag
-            for r in rho_vals:
-                if 0 <= r < len(rhos):
-                    accumulator[ti, r] += 1
-
-        tracks = []
-        for ti, th in enumerate(thetas):
-            for ri, rho in enumerate(rhos):
-                if accumulator[ti, ri] >= self.hough_threshold:
-                    a = np.cos(th)
-                    b = np.sin(th)
-                    x0 = 0
-                    y0 = int(round((rho - x0 * a) / b)) if abs(b) > 1e-8 else 0
-                    x1 = cols - 1
-                    y1 = int(round((rho - x1 * a) / b)) if abs(b) > 1e-8 else rows - 1
-                    xs_line = np.linspace(x0, x1, x1 - x0 + 1)
-                    ys_line = (rho - xs_line * a) / b if abs(b) > 1e-8 else np.full_like(xs_line, y0)
-                    tr = []
-                    for xi, yi in zip(xs_line, ys_line):
-                        yi_i = int(round(yi))
-                        xi_i = int(round(xi))
-                        if 0 <= yi_i < rows and 0 <= xi_i < cols:
-                            tr.append((xi_i, yi_i + i_min))
-                    if tr:
-                        tracks.append(tr)
-        print(f"[Hough] detection {time.perf_counter()-start_t:.2f}s")
-        return tracks
-
-    def run_threshold_detection(self, filepath):
-        """Run detection using threshold-based component tracking."""
+    def run_advanced_detection(self, filepath):
         start_t = time.perf_counter()
         y, sr = self.load_audio(filepath)
-        f, t, _, _ = self.compute_spectrogram(y, sr, filepath)
-        tracks = self.detect_tracks_by_threshold()
+        self.compute_spectrogram(y, sr, filepath)
+        tracks = self.detect_tracks_advanced()
         tracks = self.merge_tracks(tracks)
         final = []
         for tr in tracks:
@@ -339,32 +324,12 @@ class DopplerDetector(Detector):
             powers = [self.Sxx_filt[fi, ti] for ti, fi in tr]
             if np.mean(powers) < self.min_track_avg_power:
                 continue
-            if np.std(f[f_idxs]) > self.max_track_freq_std_hz:
+            if np.std(self.freqs[f_idxs]) > self.max_track_freq_std_hz:
                 continue
             final.append(tr)
-        print(f"[Threshold] full pipeline {time.perf_counter()-start_t:.2f}s")
+        print(f"[Advanced] full pipeline {time.perf_counter()-start_t:.2f}s")
         return final
 
-    def run_hough_detection(self, filepath):
-        """Run detection using the Hough transform."""
-        start_t = time.perf_counter()
-        y, sr = self.load_audio(filepath)
-        f, t, _, _ = self.compute_spectrogram(y, sr, filepath)
-        tracks = self.detect_tracks_hough()
-        tracks = self.merge_tracks(tracks)
-        final = []
-        for tr in tracks:
-            if len(tr) < self.min_track_length_frames:
-                continue
-            f_idxs = [pt[1] for pt in tr]
-            powers = [self.Sxx_filt[fi, ti] for ti, fi in tr]
-            if np.mean(powers) < self.min_track_avg_power:
-                continue
-            if np.std(f[f_idxs]) > self.max_track_freq_std_hz:
-                continue
-            final.append(tr)
-        print(f"[Hough] full pipeline {time.perf_counter()-start_t:.2f}s")
-        return final
 
     def run_detection(self, filepath):
         """
@@ -374,8 +339,8 @@ class DopplerDetector(Detector):
         start_t = time.perf_counter()
         y, sr = self.load_audio(filepath)
         f, t, Sxx_norm, Sxx_filt = self.compute_spectrogram(y, sr, filepath)
-        if self.detection_method == "hough":
-            tracks = self.detect_tracks_hough()
+        if self.detection_method == "advanced":
+            tracks = self.detect_tracks_advanced()
         else:
             peaks = self.detect_peaks_per_frame()
             tracks = self.track_peaks_over_time(peaks)
