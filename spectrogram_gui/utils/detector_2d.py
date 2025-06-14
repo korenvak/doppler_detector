@@ -58,22 +58,36 @@ class DopplerDetector2D:
         peaks_per_frame = [[] for _ in range(num_t)]
         conf_per_frame = [[] for _ in range(num_t)]
 
-        for r, c in coords:
-            freq_idx = r
-            freq_val = self.freqs[freq_idx]
+        if coords.size:
+            r = coords[:, 0]
+            c = coords[:, 1]
 
-            # discard frequencies outside the user-specified band
-            if freq_val < self.freq_min or freq_val > self.freq_max:
-                continue
+            # filter by frequency range
+            freq_vals = self.freqs[r]
+            mask = (freq_vals >= self.freq_min) & (freq_vals <= self.freq_max)
 
-            # compute prominence vs. immediate frequency neighbours
-            above = S[freq_idx - 1, c] if freq_idx > 0 else S[freq_idx, c]
-            below = S[freq_idx + 1, c] if freq_idx < S.shape[0] - 1 else S[freq_idx, c]
-            if S[freq_idx, c] - max(above, below) < self.peak_prominence:
-                continue
+            # compute prominence vs neighbours
+            above_idx = np.clip(r - 1, 0, S.shape[0] - 1)
+            below_idx = np.clip(r + 1, 0, S.shape[0] - 1)
+            above = S[above_idx, c]
+            below = S[below_idx, c]
+            center = S[r, c]
+            mask &= (center - np.maximum(above, below)) >= self.peak_prominence
 
-            peaks_per_frame[c].append(freq_idx)
-            conf_per_frame[c].append(S[freq_idx, c])
+            r = r[mask]
+            c = c[mask]
+            center = center[mask]
+
+            # group by time index
+            order = np.argsort(c)
+            r = r[order]
+            c = c[order]
+            center = center[order]
+
+            # fill lists
+            for freq_idx, time_idx, conf in zip(r, c, center):
+                peaks_per_frame[time_idx].append(freq_idx)
+                conf_per_frame[time_idx].append(conf)
 
         # limit number of peaks per time frame
         for ti in range(num_t):
