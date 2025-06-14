@@ -1,5 +1,5 @@
 import numpy as np
-from scipy.ndimage import maximum_filter
+from skimage.feature import peak_local_max
 
 
 class DopplerDetector2D:
@@ -42,27 +42,46 @@ class DopplerDetector2D:
 
     # ----- Peak detection -----
     def detect_peaks_2d(self):
-        """Fast 2D local maxima detection using a small maximum filter."""
+        """Find local maxima in the entire spectrogram."""
         S = self.Sxx_filt
-        freq_mask = (self.freqs >= self.freq_min) & (self.freqs <= self.freq_max)
-        sub = S[freq_mask]
-        local_max = maximum_filter(sub, size=3, mode="constant") == sub
-        mask = (sub >= self.power_threshold) & local_max
-        fr_idx, t_idx = np.nonzero(mask)
-        global_f = np.nonzero(freq_mask)[0][fr_idx]
+
+        # candidate maxima using a 3x3 footprint; reflect to avoid edge bias
+        coords = peak_local_max(
+            S,
+            footprint=np.ones((3, 3)),
+            threshold_abs=self.power_threshold,
+            threshold_rel=self.peak_prominence,
+            exclude_border=1,
+        )
 
         num_t = S.shape[1]
         peaks_per_frame = [[] for _ in range(num_t)]
         conf_per_frame = [[] for _ in range(num_t)]
-        for f_i, t_i in zip(global_f, t_idx):
-            peaks_per_frame[t_i].append(f_i)
-            conf_per_frame[t_i].append(S[f_i, t_i])
 
+        for r, c in coords:
+            freq_idx = r
+            freq_val = self.freqs[freq_idx]
+
+            # discard frequencies outside the user-specified band
+            if freq_val < self.freq_min or freq_val > self.freq_max:
+                continue
+
+            # compute prominence vs. immediate frequency neighbours
+            above = S[freq_idx - 1, c] if freq_idx > 0 else S[freq_idx, c]
+            below = S[freq_idx + 1, c] if freq_idx < S.shape[0] - 1 else S[freq_idx, c]
+            if S[freq_idx, c] - max(above, below) < self.peak_prominence:
+                continue
+
+            peaks_per_frame[c].append(freq_idx)
+            conf_per_frame[c].append(S[freq_idx, c])
+
+        # limit number of peaks per time frame
         for ti in range(num_t):
             if len(peaks_per_frame[ti]) > self.max_peaks_per_frame:
                 order = np.argsort(conf_per_frame[ti])[::-1][: self.max_peaks_per_frame]
                 peaks_per_frame[ti] = [peaks_per_frame[ti][i] for i in order]
                 conf_per_frame[ti] = [conf_per_frame[ti][i] for i in order]
+
         return peaks_per_frame, conf_per_frame
 
     # ----- Tracking -----
