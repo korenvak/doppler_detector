@@ -246,10 +246,10 @@ class DetectorParamsDialog(QDialog):
     def update_visibility(self):
         if self.method_box is None:
             peaks = self.mode == "peaks"
-            advanced = self.mode == "pattern"
+            pattern = self.mode == "pattern"
         else:
             peaks = self.method_box.currentIndex() == 0
-            advanced = self.method_box.currentIndex() == 1
+            pattern = self.method_box.currentIndex() == 1
 
         peak_widgets = [
             self.power_thresh_spin,
@@ -266,7 +266,7 @@ class DetectorParamsDialog(QDialog):
             self.max_std_spin,
         ]
 
-        adv_widgets = [
+        pattern_widgets = [
             self.adv_thresh_label,
             self.adv_thresh_spin,
             self.adv_len_label,
@@ -275,11 +275,6 @@ class DetectorParamsDialog(QDialog):
             self.adv_gap_spin,
             self.adv_slope_label,
             self.adv_slope_spin,
-            self.adv_use_cfar_check,
-            self.adv_cfar_train_spin,
-            self.adv_cfar_guard_spin,
-            self.adv_cfar_pfa_spin,
-            self.adv_use_ridge_check,
             self.adv_ridge_sigma_spin,
             self.adv_min_obj_spin,
             self.adv_use_skeleton_check,
@@ -301,8 +296,8 @@ class DetectorParamsDialog(QDialog):
         for w in peak_widgets:
             show_row(w, peaks)
 
-        for w in adv_widgets:
-            show_row(w, advanced)
+        for w in pattern_widgets:
+            show_row(w, pattern)
 
     def accept(self):
         d = self.detector
