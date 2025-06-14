@@ -946,7 +946,6 @@ app.layout = dbc.Container([
                     dbc.Button("🗺️ Interactive Map", id="btn-map", color="primary", className="me-1", active=True),
                     dbc.Button("🎮 3D View", id="btn-3d", color="secondary", className="me-1"),
                     dbc.Button("🏃 Movement Analysis", id="btn-movement", color="secondary", className="me-1"),
-                    dbc.Button("📊 Analytics", id="btn-analytics", color="secondary", className="me-1"),
                     dbc.Button("📋 Data Table", id="btn-data", color="secondary", className="me-1"),
                     dbc.Button("⚙️ Settings", id="btn-settings", color="secondary", className="me-1")
                 ], size="sm")
@@ -970,23 +969,20 @@ app.layout = dbc.Container([
     Output('btn-map', 'active'),
     Output('btn-3d', 'active'),
     Output('btn-movement', 'active'),
-    Output('btn-analytics', 'active'),
     Output('btn-data', 'active'),
     Output('btn-settings', 'active'),
     Output('btn-map', 'color'),
     Output('btn-3d', 'color'),
     Output('btn-movement', 'color'),
-    Output('btn-analytics', 'color'),
     Output('btn-data', 'color'),
     Output('btn-settings', 'color')],
     [Input('btn-map', 'n_clicks'),
      Input('btn-3d', 'n_clicks'),
      Input('btn-movement', 'n_clicks'),
-     Input('btn-analytics', 'n_clicks'),
      Input('btn-data', 'n_clicks'),
      Input('btn-settings', 'n_clicks')]
 )
-def render_content_from_buttons(btn_map, btn_3d, btn_movement, btn_analytics, btn_data, btn_settings):
+def render_content_from_buttons(btn_map, btn_3d, btn_movement, btn_data, btn_settings):
     # Determine which button was clicked
     ctx = callback_context
     if not ctx.triggered:
@@ -996,8 +992,8 @@ def render_content_from_buttons(btn_map, btn_3d, btn_movement, btn_analytics, bt
         active_tab = button_id.split('-')[1]
 
     # Set active states
-    active_states = [False] * 6
-    colors = ['secondary'] * 6
+    active_states = [False] * 5
+    colors = ['secondary'] * 5
 
     # Content to display
     content = None
@@ -1046,7 +1042,11 @@ def render_content_from_buttons(btn_map, btn_3d, btn_movement, btn_analytics, bt
                         value=['detections'],
                         inline=True
                     )
-                ], md=8)
+                ], md=5),
+                dbc.Col([
+                    html.Label("Select Pixels:", className="fw-bold"),
+                    dcc.Dropdown(id="3d-pixel-select", multi=True)
+                ], md=3)
             ], className="mb-3"),
             dcc.Graph(id='3d-flight-view', style={'height': '70vh'})
         ])
@@ -1084,38 +1084,16 @@ def render_content_from_buttons(btn_map, btn_3d, btn_movement, btn_analytics, bt
             ]),
             html.Div(id='movement-images', className='mt-3')
         ])
-    elif active_tab == "analytics":
+    elif active_tab == "data":
         active_states[3] = True
         colors[3] = 'primary'
-        content = html.Div([
-            dbc.Row([
-                dbc.Col([
-                    dcc.Graph(id='coverage-chart', style={'height': '400px'})
-                ], md=6),
-                dbc.Col([
-                    dcc.Graph(id='distance-analysis', style={'height': '400px'})
-                ], md=6)
-            ], className="mb-4"),
-            dbc.Row([
-                dbc.Col([
-                    dcc.Graph(id='sensor-distribution', style={'height': '400px'})
-                ], md=6),
-                dbc.Col([
-                    dcc.Graph(id='flight-comparison', style={'height': '400px'})
-                ], md=6)
-            ])
-        ])
-
-    elif active_tab == "data":
-        active_states[4] = True
-        colors[4] = 'primary'
         content = html.Div([
             html.Div(id="data-table-container")
         ])
 
     elif active_tab == "settings":
-        active_states[5] = True
-        colors[5] = 'primary'
+        active_states[4] = True
+        colors[4] = 'primary'
         content = html.Div([
             dbc.Row([
                 dbc.Col([
@@ -1199,6 +1177,19 @@ def update_movement_dropdown(view_mode):
     else:
         opts = [{'label': f'Pixel {px}', 'value': px} for px in sorted(sensor_positions.keys())]
         return opts, []
+
+
+# Pixel selection for 3D view
+@app.callback([
+    Output('3d-pixel-select', 'options'),
+    Output('3d-pixel-select', 'value')],
+    Input('3d-flight-select', 'value'))
+def update_3d_pixel_dropdown(flight):
+    if not flight:
+        return [], []
+    pixels = sorted(df_sum[df_sum['Flight number'] == flight]['Pixel'].unique())
+    opts = [{'label': f'Pixel {p}', 'value': p} for p in pixels]
+    return opts, pixels
 
 
 # Update flight info
@@ -1553,9 +1544,10 @@ def update_movement_legend(display_options):
 @app.callback(
     Output('3d-flight-view', 'figure'),
     [Input('3d-flight-select', 'value'),
-     Input('3d-options', 'value')]
+     Input('3d-options', 'value'),
+     Input('3d-pixel-select', 'value')]
 )
-def update_3d_view(flight, options):
+def update_3d_view(flight, options, pixel_selection):
     if not flight:
         fig = go.Figure()
         fig.add_annotation(
@@ -1611,7 +1603,11 @@ def update_3d_view(flight, options):
                     ))
 
         if 'pixel_traces' in (options or []):
-            for px in sorted(df_sum[df_sum['Flight number'] == flight]['Pixel'].unique()):
+            if pixel_selection:
+                pixels_to_show = pixel_selection
+            else:
+                pixels_to_show = sorted(df_sum[df_sum['Flight number'] == flight]['Pixel'].unique())
+            for px in pixels_to_show:
                 windows = dict_pixel.get((flight, px), [])
                 col = pixel_colors.get(px, '#0066CC')
                 for window_idx, (coords, meta, _snap) in enumerate(windows):
@@ -1752,291 +1748,6 @@ def update_movement_images(flight, view_mode, selection):
 
 
 # Coverage chart callback
-@app.callback(
-    Output('coverage-chart', 'figure'),
-    [Input('flight-dd', 'value'),
-     Input('view-mode', 'value'),
-     Input('selection-dd', 'value')]
-)
-def update_coverage_chart(flight, view_mode, selection):
-    if not flight or not selection:
-        fig = go.Figure()
-        fig.add_annotation(
-            text="Select items to view coverage analysis",
-            xref="paper", yref="paper",
-            x=0.5, y=0.5, showarrow=False,
-            font=dict(size=16, color="gray")
-        )
-        fig.update_layout(
-            title="Coverage Analysis",
-            xaxis=dict(visible=False),
-            yaxis=dict(visible=False),
-            plot_bgcolor='white',
-            height=400
-        )
-        return fig
-
-    if view_mode == 'individual' and coverage_per_pixel is not None:
-        fig = go.Figure()
-
-        coverage_data = []
-        colors_list = []
-        labels_list = []
-
-        for px in selection:
-            if px in coverage_per_pixel.index:
-                flight_col = f"Flight_{flight}"
-                if flight_col in coverage_per_pixel.columns:
-                    cov = coverage_per_pixel.loc[px, flight_col]
-                    if not pd.isna(cov):
-                        coverage_data.append(cov)
-                        colors_list.append(pixel_colors.get(px, '#0066CC'))
-                        labels_list.append(f'Pixel {px}')
-
-        if coverage_data:
-            fig.add_trace(go.Bar(
-                x=labels_list,
-                y=coverage_data,
-                marker_color=colors_list,
-                name="Coverage"
-            ))
-
-            fig.update_layout(
-                title=f"Coverage Analysis - Flight {flight}",
-                xaxis_title="Pixels",
-                yaxis_title="Coverage (%)",
-                showlegend=False,
-                plot_bgcolor='white',
-                height=400
-            )
-
-        return fig
-
-    elif view_mode == 'clustered' and coverage_per_type is not None:
-        fig = go.Figure()
-
-        coverage_data = []
-        colors_list = []
-        labels_list = []
-
-        for stype in selection:
-            if stype in coverage_per_type.index:
-                flight_col = f"Flight_{flight}"
-                if flight_col in coverage_per_type.columns:
-                    cov = coverage_per_type.loc[stype, flight_col]
-                    if not pd.isna(cov):
-                        coverage_data.append(cov)
-                        colors_list.append(type_colors.get(stype, '#0066CC'))
-                        labels_list.append(stype)
-
-        if coverage_data:
-            fig.add_trace(go.Bar(
-                x=labels_list,
-                y=coverage_data,
-                marker_color=colors_list,
-                name="Coverage"
-            ))
-
-            fig.update_layout(
-                title=f"Coverage by Sensor Type - Flight {flight}",
-                xaxis_title="Sensor Types",
-                yaxis_title="Coverage (%)",
-                showlegend=False,
-                plot_bgcolor='white',
-                height=400
-            )
-
-        return fig
-
-    # Default empty chart
-    fig = go.Figure()
-    fig.add_annotation(
-        text="Coverage data not available",
-        xref="paper", yref="paper",
-        x=0.5, y=0.5, showarrow=False,
-        font=dict(size=16, color="gray")
-    )
-    fig.update_layout(
-        title="Coverage Analysis",
-        xaxis=dict(visible=False),
-        yaxis=dict(visible=False),
-        plot_bgcolor='white',
-        height=400
-    )
-    return fig
-
-
-@app.callback(
-    Output('distance-analysis', 'figure'),
-    [Input('flight-dd', 'value'),
-     Input('selection-dd', 'value')]
-)
-def update_distance_analysis(flight, selection):
-    if not flight:
-        fig = go.Figure()
-        fig.add_annotation(
-            text="Select a flight to view distance analysis",
-            xref="paper", yref="paper",
-            x=0.5, y=0.5, showarrow=False,
-            font=dict(size=16, color="gray")
-        )
-        fig.update_layout(
-            title="Distance Analysis",
-            xaxis=dict(visible=False),
-            yaxis=dict(visible=False),
-            plot_bgcolor='white',
-            height=400
-        )
-        return fig
-
-    flight_data = df_sum[df_sum['Flight number'] == flight]
-
-    if selection:
-        flight_data = flight_data[flight_data['Pixel'].isin(selection)]
-
-    if not flight_data.empty and 'min_dist3D' in flight_data.columns and 'max_dist3D' in flight_data.columns:
-        fig = go.Figure()
-
-        # Add min and max distance traces
-        fig.add_trace(go.Scatter(
-            x=flight_data['Pixel'],
-            y=flight_data['min_dist3D'],
-            mode='markers+lines',
-            name='Min Distance',
-            line=dict(color='green', width=2),
-            marker=dict(size=8)
-        ))
-
-        fig.add_trace(go.Scatter(
-            x=flight_data['Pixel'],
-            y=flight_data['max_dist3D'],
-            mode='markers+lines',
-            name='Max Distance',
-            line=dict(color='red', width=2),
-            marker=dict(size=8)
-        ))
-
-        fig.update_layout(
-            title=f"Distance Analysis - Flight {flight}",
-            xaxis_title="Pixel",
-            yaxis_title="Distance (m)",
-            plot_bgcolor='white',
-            hovermode='x unified',
-            height=400
-        )
-
-        return fig
-
-    # Empty chart
-    fig = go.Figure()
-    fig.add_annotation(
-        text="No distance data available",
-        xref="paper", yref="paper",
-        x=0.5, y=0.5, showarrow=False,
-        font=dict(size=16, color="gray")
-    )
-    fig.update_layout(
-        title="Distance Analysis",
-        xaxis=dict(visible=False),
-        yaxis=dict(visible=False),
-        plot_bgcolor='white',
-        height=400
-    )
-    return fig
-
-
-@app.callback(
-    Output('sensor-distribution', 'figure'),
-    Input('flight-dd', 'value')
-)
-def update_sensor_distribution(flight):
-    if not flight:
-        fig = go.Figure()
-        fig.add_annotation(
-            text="Select a flight to view sensor distribution",
-            xref="paper", yref="paper",
-            x=0.5, y=0.5, showarrow=False,
-            font=dict(size=16, color="gray")
-        )
-        fig.update_layout(
-            title="Sensor Type Distribution",
-            plot_bgcolor='white',
-            height=400
-        )
-        return fig
-
-    flight_data = df_sum[df_sum['Flight number'] == flight]
-    sensor_counts = flight_data['Sensor Type'].value_counts()
-
-    colors = [type_colors.get(stype, '#0066CC') for stype in sensor_counts.index]
-
-    fig = go.Figure(data=[
-        go.Pie(
-            labels=sensor_counts.index,
-            values=sensor_counts.values,
-            marker_colors=colors,
-            textposition='inside',
-            textinfo='percent+label'
-        )
-    ])
-
-    fig.update_layout(
-        title=f"Sensor Distribution - Flight {flight}",
-        plot_bgcolor='white',
-        height=400
-    )
-
-    return fig
-
-
-@app.callback(
-    Output('flight-comparison', 'figure'),
-    Input('view-mode', 'value')
-)
-def update_flight_comparison(view_mode):
-    if view_mode == 'individual':
-        # Compare flights by pixel count
-        flight_pixel_counts = df_sum.groupby('Flight number')['Pixel'].nunique().sort_index()
-
-        fig = go.Figure(data=[
-            go.Bar(
-                x=flight_pixel_counts.index,
-                y=flight_pixel_counts.values,
-                marker_color='#3498db'
-            )
-        ])
-
-        fig.update_layout(
-            title="Pixels per Flight",
-            xaxis_title="Flight Number",
-            yaxis_title="Number of Pixels",
-            plot_bgcolor='white',
-            height=400
-        )
-
-    else:
-        # Compare flights by sensor type coverage
-        flight_type_counts = df_sum.groupby(['Flight number', 'Sensor Type']).size().unstack(fill_value=0)
-
-        fig = go.Figure()
-        for stype in flight_type_counts.columns:
-            fig.add_trace(go.Bar(
-                x=flight_type_counts.index,
-                y=flight_type_counts[stype],
-                name=stype,
-                marker_color=type_colors.get(stype, '#0066CC')
-            ))
-
-        fig.update_layout(
-            title="Sensor Types per Flight",
-            xaxis_title="Flight Number",
-            yaxis_title="Number of Events",
-            barmode='stack',
-            plot_bgcolor='white',
-            height=400
-        )
-
-    return fig
 
 
 @app.callback(
