@@ -387,7 +387,7 @@ class MainWindow(QMainWindow):
             return
 
         # 1) Show parameters dialog
-        dlg = DetectorParamsDialog(self, detector=self.detector, mode="both")
+        dlg = DetectorParamsDialog(self, detector=self.detector, mode="peaks")
         if dlg.exec_() != dlg.Accepted:
             return
 
@@ -763,7 +763,12 @@ class MainWindow(QMainWindow):
         return super().eventFilter(obj, event)
 
     def open_detector_params(self):
-        dlg = DetectorParamsDialog(self, detector=self.detector, mode="both")
+        mode = (
+            self.detector.detection_method
+            if self.detector.detection_method in ("peaks", "pattern")
+            else "peaks"
+        )
+        dlg = DetectorParamsDialog(self, detector=self.detector, mode=mode)
         dlg.exec_()
 
     def load_prev_file(self):
