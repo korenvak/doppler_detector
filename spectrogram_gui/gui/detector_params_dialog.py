@@ -2,7 +2,7 @@
 
 from PyQt5.QtWidgets import (
     QDialog, QFormLayout, QSpinBox, QDoubleSpinBox,
-    QDialogButtonBox, QComboBox, QLabel
+    QDialogButtonBox, QComboBox, QLabel, QCheckBox
 )
 from PyQt5.QtCore import Qt
 
@@ -131,26 +131,84 @@ class DetectorParamsDialog(QDialog):
         self.merge_freq_diff_spin.setValue(detector.merge_max_freq_diff_hz)
         layout.addRow("Merge Max Freq Diff [Hz]:", self.merge_freq_diff_spin)
 
+        # --- Advanced Detection Parameters ---
+        self.adv_header = QLabel("<b>Advanced Detection Parameters</b>")
+        layout.addRow(self.adv_header)
+
         # 18) Advanced mask percentile
         self.adv_thresh_label = QLabel("Mask Percentile:")
         self.adv_thresh_spin = QSpinBox()
         self.adv_thresh_spin.setRange(50, 100)
         self.adv_thresh_spin.setValue(detector.adv_threshold_percentile)
+        self.adv_thresh_spin.setToolTip("Percentile of power used for mask")
         layout.addRow(self.adv_thresh_label, self.adv_thresh_spin)
 
         # 19) Advanced line length
-        self.adv_len_label = QLabel("Min Line Length:")
+        self.adv_len_label = QLabel("Min Line Length [px]:")
         self.adv_len_spin = QSpinBox()
         self.adv_len_spin.setRange(1, 1000)
         self.adv_len_spin.setValue(detector.adv_min_line_length)
+        self.adv_len_spin.setToolTip("Minimum length of detected lines")
         layout.addRow(self.adv_len_label, self.adv_len_spin)
 
         # 20) Advanced line gap
-        self.adv_gap_label = QLabel("Line Gap:")
+        self.adv_gap_label = QLabel("Line Gap [px]:")
         self.adv_gap_spin = QSpinBox()
         self.adv_gap_spin.setRange(1, 100)
         self.adv_gap_spin.setValue(detector.adv_line_gap)
+        self.adv_gap_spin.setToolTip("Maximum gap between line segments")
         layout.addRow(self.adv_gap_label, self.adv_gap_spin)
+
+        # use CFAR
+        self.adv_use_cfar_check = QCheckBox("Use CFAR")
+        self.adv_use_cfar_check.setChecked(detector.adv_use_cfar)
+        self.adv_use_cfar_check.setToolTip("Apply Constant False Alarm Rate filtering")
+        layout.addRow(self.adv_use_cfar_check)
+
+        # CFAR parameters
+        self.adv_cfar_train_spin = QSpinBox()
+        self.adv_cfar_train_spin.setRange(1, 100)
+        self.adv_cfar_train_spin.setValue(detector.adv_cfar_train)
+        self.adv_cfar_train_spin.setToolTip("Number of training cells for CFAR")
+        layout.addRow("CFAR Num Training Cells:", self.adv_cfar_train_spin)
+
+        self.adv_cfar_guard_spin = QSpinBox()
+        self.adv_cfar_guard_spin.setRange(0, 20)
+        self.adv_cfar_guard_spin.setValue(detector.adv_cfar_guard)
+        self.adv_cfar_guard_spin.setToolTip("Number of guard cells around test cell")
+        layout.addRow("CFAR Num Guard Cells:", self.adv_cfar_guard_spin)
+
+        self.adv_cfar_pfa_spin = QDoubleSpinBox()
+        self.adv_cfar_pfa_spin.setDecimals(4)
+        self.adv_cfar_pfa_spin.setSingleStep(0.0001)
+        self.adv_cfar_pfa_spin.setRange(1e-6, 0.1)
+        self.adv_cfar_pfa_spin.setValue(detector.adv_cfar_pfa)
+        self.adv_cfar_pfa_spin.setToolTip("Desired false alarm probability")
+        layout.addRow("CFAR PFA:", self.adv_cfar_pfa_spin)
+
+        self.adv_use_ridge_check = QCheckBox("Use Ridge Detection")
+        self.adv_use_ridge_check.setChecked(detector.adv_use_ridge)
+        self.adv_use_ridge_check.setToolTip("Enable ridge-based mask from Hessian")
+        layout.addRow(self.adv_use_ridge_check)
+
+        self.adv_ridge_sigma_spin = QDoubleSpinBox()
+        self.adv_ridge_sigma_spin.setDecimals(1)
+        self.adv_ridge_sigma_spin.setSingleStep(0.1)
+        self.adv_ridge_sigma_spin.setRange(0.1, 10.0)
+        self.adv_ridge_sigma_spin.setValue(detector.adv_ridge_sigma)
+        self.adv_ridge_sigma_spin.setToolTip("Gaussian sigma for ridge detection")
+        layout.addRow("Ridge Sigma:", self.adv_ridge_sigma_spin)
+
+        self.adv_min_obj_spin = QSpinBox()
+        self.adv_min_obj_spin.setRange(1, 1000)
+        self.adv_min_obj_spin.setValue(detector.adv_min_object_size)
+        self.adv_min_obj_spin.setToolTip("Minimum object size in post-processing")
+        layout.addRow("Post-processing: Min Object Size:", self.adv_min_obj_spin)
+
+        self.adv_use_skeleton_check = QCheckBox("Skeletonize Mask")
+        self.adv_use_skeleton_check.setChecked(detector.adv_use_skeleton)
+        self.adv_use_skeleton_check.setToolTip("Thin mask before Hough transform")
+        layout.addRow(self.adv_use_skeleton_check)
 
 
         # OK / Cancel
@@ -192,6 +250,15 @@ class DetectorParamsDialog(QDialog):
             self.adv_len_spin,
             self.adv_gap_label,
             self.adv_gap_spin,
+            self.adv_use_cfar_check,
+            self.adv_cfar_train_spin,
+            self.adv_cfar_guard_spin,
+            self.adv_cfar_pfa_spin,
+            self.adv_use_ridge_check,
+            self.adv_ridge_sigma_spin,
+            self.adv_min_obj_spin,
+            self.adv_use_skeleton_check,
+            self.adv_header,
         ]
 
         for w in peak_widgets:
@@ -220,6 +287,14 @@ class DetectorParamsDialog(QDialog):
         d.adv_threshold_percentile = self.adv_thresh_spin.value()
         d.adv_min_line_length = self.adv_len_spin.value()
         d.adv_line_gap = self.adv_gap_spin.value()
+        d.adv_use_cfar = self.adv_use_cfar_check.isChecked()
+        d.adv_cfar_train = self.adv_cfar_train_spin.value()
+        d.adv_cfar_guard = self.adv_cfar_guard_spin.value()
+        d.adv_cfar_pfa = self.adv_cfar_pfa_spin.value()
+        d.adv_use_ridge = self.adv_use_ridge_check.isChecked()
+        d.adv_ridge_sigma = self.adv_ridge_sigma_spin.value()
+        d.adv_min_object_size = self.adv_min_obj_spin.value()
+        d.adv_use_skeleton = self.adv_use_skeleton_check.isChecked()
         if self.method_box is not None:
             if self.method_box.currentIndex() == 1:
                 d.detection_method = "advanced"

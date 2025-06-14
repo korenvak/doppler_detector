@@ -58,6 +58,14 @@ class DopplerDetector(Detector):
         adv_threshold_percentile=85,
         adv_min_line_length=40,
         adv_line_gap=8,
+        adv_use_cfar=True,
+        adv_use_ridge=True,
+        adv_ridge_sigma=3.0,
+        adv_cfar_train=20,
+        adv_cfar_guard=2,
+        adv_cfar_pfa=0.001,
+        adv_min_object_size=50,
+        adv_use_skeleton=True,
         fast_mode=False,
     ):
         # detection parameters
@@ -82,6 +90,14 @@ class DopplerDetector(Detector):
         self.adv_threshold_percentile = adv_threshold_percentile
         self.adv_min_line_length = adv_min_line_length
         self.adv_line_gap = adv_line_gap
+        self.adv_use_cfar = adv_use_cfar
+        self.adv_use_ridge = adv_use_ridge
+        self.adv_ridge_sigma = adv_ridge_sigma
+        self.adv_cfar_train = adv_cfar_train
+        self.adv_cfar_guard = adv_cfar_guard
+        self.adv_cfar_pfa = adv_cfar_pfa
+        self.adv_min_object_size = adv_min_object_size
+        self.adv_use_skeleton = adv_use_skeleton
         self.fast_mode = fast_mode
 
         # will be set in compute_spectrogram
@@ -259,6 +275,7 @@ class DopplerDetector(Detector):
         return S
 
     def _cfar(self, Sxx, num_train=20, num_guard=2, pfa=0.001):
+        """Return a boolean mask using a simple cell-averaging CFAR."""
         n_freq, _ = Sxx.shape
         alpha = num_train * (pfa ** (-1 / num_train) - 1)
         mask = np.zeros_like(Sxx, dtype=bool)
@@ -272,6 +289,7 @@ class DopplerDetector(Detector):
         return mask
 
     def _ridge_detection(self, Sxx, sigma=3.0):
+        """Detect ridges using eigenvalues of the Hessian matrix."""
         H = hessian_matrix(Sxx, sigma=sigma, order='rc', use_gaussian_derivatives=False)
         ridges, _ = hessian_matrix_eigvals(H)
         thr = np.percentile(np.abs(ridges), 85)
@@ -287,8 +305,21 @@ class DopplerDetector(Detector):
         band = S[i_min:i_max + 1]
         thr = np.percentile(band, self.adv_threshold_percentile)
         base_m = band > thr
-        cfar_m = self._cfar(band)
-        ridge_m = self._ridge_detection(band)
+        if self.adv_use_cfar:
+            cfar_m = self._cfar(
+                band,
+                num_train=self.adv_cfar_train,
+                num_guard=self.adv_cfar_guard,
+                pfa=self.adv_cfar_pfa,
+            )
+        else:
+            cfar_m = np.ones_like(base_m, dtype=bool)
+
+        if self.adv_use_ridge:
+            ridge_m = self._ridge_detection(band, sigma=self.adv_ridge_sigma)
+        else:
+            ridge_m = np.ones_like(base_m, dtype=bool)
+
         mask = base_m & (cfar_m | ridge_m)
         print(
             "Base:", base_m.sum(),
@@ -297,8 +328,9 @@ class DopplerDetector(Detector):
             "Combined:", mask.sum(),
         )
         mask = binary_opening(mask, iterations=1)
-        mask = remove_small_objects(mask.astype(bool), min_size=50)
-        mask = skeletonize(mask)
+        mask = remove_small_objects(mask.astype(bool), min_size=self.adv_min_object_size)
+        if self.adv_use_skeleton:
+            mask = skeletonize(mask)
         lines = probabilistic_hough_line(
             mask.astype(np.uint8),
             threshold=10,
