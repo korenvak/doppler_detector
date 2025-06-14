@@ -18,12 +18,10 @@ class DetectorParamsDialog(QDialog):
 
         if self.mode == "both":
             self.method_box = QComboBox()
-            self.method_box.addItems(["Peaks", "Advanced", "Pattern"])
+            self.method_box.addItems(["Peaks", "Pattern"])
             method = getattr(detector, "detection_method", "peaks")
-            if method == "advanced":
+            if method == "pattern":
                 self.method_box.setCurrentIndex(1)
-            elif method == "pattern":
-                self.method_box.setCurrentIndex(2)
             layout.addRow("Detection Method:", self.method_box)
         else:
             self.method_box = None
@@ -145,8 +143,8 @@ class DetectorParamsDialog(QDialog):
         self.tv_weight_spin.setValue(getattr(detector, "tv_denoising_weight", 0.1))
         layout.addRow("TV Denoising Weight:", self.tv_weight_spin)
 
-        # --- Advanced Detection Parameters ---
-        self.adv_header = QLabel("<b>Advanced Detection Parameters</b>")
+        # --- Pattern Detection Parameters ---
+        self.adv_header = QLabel("<b>Pattern Detection Parameters</b>")
         layout.addRow(self.adv_header)
 
         # 18) Advanced mask percentile
@@ -248,10 +246,10 @@ class DetectorParamsDialog(QDialog):
     def update_visibility(self):
         if self.method_box is None:
             peaks = self.mode == "peaks"
-            advanced = self.mode in ("advanced", "pattern")
+            advanced = self.mode == "pattern"
         else:
             peaks = self.method_box.currentIndex() == 0
-            advanced = self.method_box.currentIndex() in (1, 2)
+            advanced = self.method_box.currentIndex() == 1
 
         peak_widgets = [
             self.power_thresh_spin,
@@ -339,11 +337,10 @@ class DetectorParamsDialog(QDialog):
         d.adv_use_skeleton = self.adv_use_skeleton_check.isChecked()
         if self.method_box is not None:
             if self.method_box.currentIndex() == 1:
-                d.detection_method = "advanced"
-            elif self.method_box.currentIndex() == 2:
                 d.detection_method = "pattern"
             else:
                 d.detection_method = "peaks"
         else:
-            d.detection_method = "advanced" if self.mode == "advanced" else "peaks"
+            d.detection_method = "pattern" if self.mode == "pattern" else "peaks"
         super().accept()
+

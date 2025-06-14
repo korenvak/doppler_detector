@@ -76,3 +76,4 @@ class AutoPatternDetector:
 
         print(f"[AutoPatternDetector] Detected {len(tracks)} tracks in {time.perf_counter() - start_t:.2f}s")
         return tracks
+
