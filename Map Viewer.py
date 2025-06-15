@@ -13,6 +13,19 @@ from functools import lru_cache
 from scipy.signal import savgol_filter
 from scipy.spatial.distance import cdist
 
+
+def haversine_vec(lat1, lon1, lat2, lon2):
+    """Vectorized haversine distance in meters."""
+    R = 6371000
+    lat1 = np.radians(lat1)
+    lon1 = np.radians(lon1)
+    lat2 = np.radians(lat2)
+    lon2 = np.radians(lon2)
+    dlat = lat2 - lat1
+    dlon = lon2 - lon1
+    a = np.sin(dlat / 2) ** 2 + np.cos(lat1) * np.cos(lat2) * np.sin(dlon / 2) ** 2
+    return 2 * R * np.arcsin(np.sqrt(a))
+
 import dash
 from dash import html, dcc, Input, Output, State, ALL, callback_context, dash_table
 import dash_leaflet as dl
@@ -308,34 +321,25 @@ def calculate_relative_movement_to_pixel(df_flight, sensor_lat, sensor_lon, star
 
     dt = df['parsed_time'].diff().dt.total_seconds().fillna(1).to_numpy()
 
-    dist3d = [0.0]
-    heading = [0.0]
-    from geopy.distance import geodesic
+    d2d = haversine_vec(lat[:-1], lon[:-1], lat[1:], lon[1:])
+    dz = alt[1:] - alt[:-1]
+    dist3d = np.concatenate(([0.0], np.sqrt(d2d**2 + dz**2)))
 
-    for i in range(1, len(df)):
-        d2d = geodesic((lat[i-1], lon[i-1]), (lat[i], lon[i])).meters
-        dz = alt[i] - alt[i-1]
-        dist3d.append(np.sqrt(d2d**2 + dz**2))
+    dlon = np.radians(lon[1:] - lon[:-1])
+    lat1_rad = np.radians(lat[:-1])
+    lat2_rad = np.radians(lat[1:])
+    y = np.sin(dlon) * np.cos(lat2_rad)
+    x = np.cos(lat1_rad) * np.sin(lat2_rad) - np.sin(lat1_rad) * np.cos(lat2_rad) * np.cos(dlon)
+    heading = np.concatenate(([0.0], np.degrees(np.arctan2(y, x))))
 
-        dlon = np.radians(lon[i] - lon[i-1])
-        lat1_rad = np.radians(lat[i-1])
-        lat2_rad = np.radians(lat[i])
-        y = np.sin(dlon) * np.cos(lat2_rad)
-        x = np.cos(lat1_rad) * np.sin(lat2_rad) - np.sin(lat1_rad) * np.cos(lat2_rad) * np.cos(dlon)
-        heading.append(np.degrees(np.arctan2(y, x)))
-
-    speed = np.array(dist3d) / np.where(dt == 0, 1, dt)
+    speed = dist3d / np.where(dt == 0, 1, dt)
     delta_speed = np.insert(np.diff(speed), 0, 0)
 
-    heading = np.array(heading)
     delta_heading = np.insert(np.diff(heading), 0, 0)
     delta_heading = (delta_heading + 180) % 360 - 180
 
-    dist_to_sensor = []
-    for la, lo, al in zip(lat, lon, alt):
-        d2d = geodesic((la, lo), (sensor_lat, sensor_lon)).meters
-        dist_to_sensor.append(np.sqrt(d2d**2 + (al - sensor_alt)**2))
-    dist_to_sensor = np.array(dist_to_sensor)
+    d2_sensor = haversine_vec(lat, lon, sensor_lat, sensor_lon)
+    dist_to_sensor = np.sqrt(d2_sensor**2 + (alt - sensor_alt) ** 2)
     delta_dist = np.insert(np.diff(dist_to_sensor), 0, 0)
 
     movement = []
@@ -470,23 +474,15 @@ def load_flight_path(flight_number):
     return coords
 
 
-PIXEL_DATA = {}
-
-def preload_pixel_csvs():
-    """Preload all pixel CSV files for faster access."""
-    summary_dir = os.path.dirname(summary_csv)
-    for px in sorted(df_sum['Pixel'].unique()):
-        fpath = os.path.join(summary_dir, f"points_pixel_{px}.csv")
-        if os.path.exists(fpath):
-            PIXEL_DATA[px] = pd.read_csv(fpath)
-        else:
-            PIXEL_DATA[px] = None
-            print(f"\u26A0\uFE0F Missing pixel CSV for pixel {px}")
-
-preload_pixel_csvs()
-
+@lru_cache(maxsize=32)
 def load_pixel_csv(px):
-    return PIXEL_DATA.get(px)
+    """Load a pixel CSV on demand and cache it."""
+    summary_dir = os.path.dirname(summary_csv)
+    path = os.path.join(summary_dir, f"points_pixel_{px}.csv")
+    if os.path.exists(path):
+        return pd.read_csv(path)
+    print(f"\u26A0\uFE0F Missing pixel CSV for pixel {px}")
+    return None
 
 
 @lru_cache(maxsize=None)
