@@ -59,11 +59,20 @@ class SoundDevicePlayer(QWidget):
             print("[SoundDevicePlayer] Failed to convert file.")
             return
 
-        self.data, self.sample_rate = sf.read(wav_path, dtype='float32')
+        try:
+            self.data, self.sample_rate = sf.read(wav_path, dtype='float32')
+        finally:
+            try:
+                os.remove(wav_path)
+            except OSError:
+                pass
+
         self.channels = 1 if self.data.ndim == 1 else self.data.shape[1]
         self.position = 0
         self.start_time = time.time()
-        print(f"[SoundDevicePlayer] Loaded: {filepath}, shape={self.data.shape}, sr={self.sample_rate}")
+        print(
+            f"[SoundDevicePlayer] Loaded: {filepath}, shape={self.data.shape}, sr={self.sample_rate}"
+        )
 
     def play(self):
         """

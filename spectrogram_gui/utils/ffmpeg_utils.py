@@ -8,6 +8,12 @@ _bundled = os.path.join(os.path.dirname(__file__), os.pardir, "resources", "ffmp
 FFMPEG_PATH = _bundled if os.path.exists(_bundled) else "ffmpeg"
 
 def convert_to_wav(input_path):
+    """Convert *input_path* to a temporary WAV file via ffmpeg.
+
+    Returns the path to the temporary file. The caller is responsible for
+    deleting the file when finished with it.
+    """
+
     input_path = Path(input_path)
     if not input_path.exists():
         print(f"[FFMPEG] File does not exist: {input_path}")
