@@ -17,10 +17,15 @@ from PyQt5.QtWidgets import (
 from spectrogram_gui.utils.spectrogram_utils import compute_spectrogram
 from spectrogram_gui.utils.filter_utils import (
     apply_nlms,
-    apply_ale_2d_doppler_wave,
     apply_gaussian,
     apply_median,
     apply_gabor,
+    apply_wiener,
+    apply_tv_denoising_wave,
+    apply_sobel_horizontal_wave,
+    apply_white_tophat_wave,
+    apply_frangi_wave,
+    apply_meijering_wave,
 )
 
 
@@ -41,12 +46,15 @@ class CombinedFilterDialog(QDialog):
         self.filter_box = QComboBox()
         self.filter_box.addItems([
             "NLMS",
-            "ALE 2D Doppler",
-            "Wiener Adaptive",
+            "Wiener",
             "Gaussian",
             "Median",
             "Gabor",
-            "TV Denoise Doppler",
+            "TV Denoise",
+            "Sobel Horizontal",
+            "White Top-hat",
+            "Frangi",
+            "Meijering",
             "Track Follow",
             "Enhance Doppler",
         ])
@@ -66,40 +74,17 @@ class CombinedFilterDialog(QDialog):
         w.addWidget(self.nlms_spin)
         self.stack.addWidget(nlms_widget)
 
-        # --- ALE params ---
-        w = QHBoxLayout()
-        ale_widget = QWidget()
-        ale_widget.setLayout(w)
-        w.addWidget(QLabel("μ:"))
-        self.ale_spin = QDoubleSpinBox()
-        self.ale_spin.setRange(0.0001, 1.0)
-        self.ale_spin.setSingleStep(0.001)
-        self.ale_spin.setValue(0.01)
-        w.addWidget(self.ale_spin)
-        w.addWidget(QLabel("Delay:"))
-        self.ale_delay_spin = QSpinBox()
-        self.ale_delay_spin.setRange(0, 100)
-        self.ale_delay_spin.setValue(0)
-        self.ale_delay_spin.setSpecialValueText("Auto")
-        w.addWidget(self.ale_delay_spin)
-        w.addWidget(QLabel("Slope:"))
-        self.ale_slope_spin = QDoubleSpinBox()
-        self.ale_slope_spin.setRange(-1.0, 1.0)
-        self.ale_slope_spin.setSingleStep(0.01)
-        self.ale_slope_spin.setValue(0.0)
-        w.addWidget(self.ale_slope_spin)
-        self.stack.addWidget(ale_widget)
 
         # --- Wiener params ---
         w = QHBoxLayout()
         wien_widget = QWidget()
         wien_widget.setLayout(w)
-        w.addWidget(QLabel("Noise dB:"))
-        self.wiener_spin = QDoubleSpinBox()
-        self.wiener_spin.setRange(-60, 0)
-        self.wiener_spin.setSingleStep(1)
-        self.wiener_spin.setValue(-20)
-        w.addWidget(self.wiener_spin)
+        w.addWidget(QLabel("Kernel:"))
+        self.wiener_size_spin = QSpinBox()
+        self.wiener_size_spin.setRange(1, 99)
+        self.wiener_size_spin.setSingleStep(2)
+        self.wiener_size_spin.setValue(5)
+        w.addWidget(self.wiener_size_spin)
         self.stack.addWidget(wien_widget)
 
         # --- Gaussian params ---
@@ -155,6 +140,47 @@ class CombinedFilterDialog(QDialog):
         self.tv_weight_spin.setValue(0.1)
         w.addWidget(self.tv_weight_spin)
         self.stack.addWidget(tv_widget)
+
+        # --- Sobel Horizontal params ---
+        w = QHBoxLayout()
+        sobel_widget = QWidget()
+        sobel_widget.setLayout(w)
+        self.stack.addWidget(sobel_widget)
+
+        # --- White Top-hat params ---
+        w = QHBoxLayout()
+        th_widget = QWidget()
+        th_widget.setLayout(w)
+        w.addWidget(QLabel("Size:"))
+        self.tophat_size_spin = QSpinBox()
+        self.tophat_size_spin.setRange(1, 20)
+        self.tophat_size_spin.setValue(3)
+        w.addWidget(self.tophat_size_spin)
+        self.stack.addWidget(th_widget)
+
+        # --- Frangi params ---
+        w = QHBoxLayout()
+        frangi_widget = QWidget()
+        frangi_widget.setLayout(w)
+        w.addWidget(QLabel("Sigma:"))
+        self.frangi_sigma_spin = QDoubleSpinBox()
+        self.frangi_sigma_spin.setRange(0.5, 10.0)
+        self.frangi_sigma_spin.setSingleStep(0.5)
+        self.frangi_sigma_spin.setValue(1.0)
+        w.addWidget(self.frangi_sigma_spin)
+        self.stack.addWidget(frangi_widget)
+
+        # --- Meijering params ---
+        w = QHBoxLayout()
+        meij_widget = QWidget()
+        meij_widget.setLayout(w)
+        w.addWidget(QLabel("Sigma:"))
+        self.meij_sigma_spin = QDoubleSpinBox()
+        self.meij_sigma_spin.setRange(0.5, 10.0)
+        self.meij_sigma_spin.setSingleStep(0.5)
+        self.meij_sigma_spin.setValue(1.0)
+        w.addWidget(self.meij_sigma_spin)
+        self.stack.addWidget(meij_widget)
 
         # --- Track Follow params ---
         w = QHBoxLayout()
@@ -231,32 +257,24 @@ class CombinedFilterDialog(QDialog):
                 QMessageBox.warning(self, "Too Short", "Segment shorter than NLMS order.")
                 return
             out = apply_nlms(out, mu=self.nlms_spin.value(), filter_order=order)
-        elif filt == "ALE 2D Doppler":
-            if len(out) < order:
-                QMessageBox.warning(self, "Too Short", "Segment shorter than ALE order.")
-                return
-            delay_val = self.ale_delay_spin.value()
-            delay = None if delay_val == 0 else delay_val
-            from spectrogram_gui.utils.filter_utils import apply_ale_2d_doppler_wave
-            out = apply_ale_2d_doppler_wave(
-                out,
-                delay=delay if delay is not None else 3,
-                mu=self.ale_spin.value(),
-                filter_order=order,
-                slope=self.ale_slope_spin.value(),
-            )
-        elif filt == "Wiener Adaptive":
-            from spectrogram_gui.utils.filter_utils import apply_wiener_adaptive
-            out = apply_wiener_adaptive(out, window_size=1024)
+        elif filt == "Wiener":
+            out = apply_wiener(out, mysize=self.wiener_size_spin.value())
         elif filt == "Gaussian":
             out = apply_gaussian(out, sigma=self.gauss_spin.value())
         elif filt == "Median":
             out = apply_median(out, size=self.median_spin.value())
         elif filt == "Gabor":
             out = apply_gabor(out, freq=self.gabor_freq_spin.value(), sigma=self.gabor_sigma_spin.value())
-        elif filt == "TV Denoise Doppler":
-            from spectrogram_gui.utils.filter_utils import apply_tv_denoising_doppler_wave
-            out = apply_tv_denoising_doppler_wave(out, weight=self.tv_weight_spin.value())
+        elif filt == "TV Denoise":
+            out = apply_tv_denoising_wave(out, weight=self.tv_weight_spin.value())
+        elif filt == "Sobel Horizontal":
+            out = apply_sobel_horizontal_wave(out)
+        elif filt == "White Top-hat":
+            out = apply_white_tophat_wave(out, size=self.tophat_size_spin.value())
+        elif filt == "Frangi":
+            out = apply_frangi_wave(out, sigma=self.frangi_sigma_spin.value())
+        elif filt == "Meijering":
+            out = apply_meijering_wave(out, sigma=self.meij_sigma_spin.value())
         elif filt == "Track Follow":
             from spectrogram_gui.utils.filter_utils import enhance_doppler_tracks
             out = enhance_doppler_tracks(

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import numpy as np
 import time
-from scipy.signal import stft, istft, butter, sosfilt
+from scipy.signal import stft, istft, butter, sosfilt, wiener
 from scipy.ndimage import gaussian_filter1d, median_filter, label
 from typing import Optional, List, Union, Tuple
 
@@ -457,9 +457,90 @@ def enhance_doppler_tracks(
     else:
         if track_detection:
             Sxx = apply_track_following_filter(Sxx, enhancement_factor=enhancement_factor)
-        Sxx = apply_wiener_adaptive_2d(Sxx)
-        Sxx = apply_tv_denoising_doppler(Sxx)
+        Sxx = apply_wiener_2d(Sxx)
+        Sxx = apply_tv_denoising(Sxx)
     phase = np.angle(Zxx)
     Zxx_enh = np.sqrt(Sxx) * np.exp(1j * phase)
     _, out = istft(Zxx_enh, fs=fs, nperseg=nperseg)
     return out[: len(x)]
+
+
+def apply_wiener(x: np.ndarray, mysize: int = 5) -> np.ndarray:
+    """Standard Wiener filter on a 1-D signal."""
+    return wiener(x.astype(np.float64, copy=False), mysize=mysize)
+
+
+def apply_wiener_2d(Sxx: np.ndarray, size: tuple = (5, 5)) -> np.ndarray:
+    """Apply a simple 2-D Wiener filter."""
+    return wiener(Sxx.astype(np.float64, copy=False), mysize=size)
+
+
+def apply_tv_denoising(Sxx: np.ndarray, weight: float = 0.1) -> np.ndarray:
+    """Total variation denoising on a spectrogram."""
+    from skimage.restoration import denoise_tv_chambolle
+
+    return denoise_tv_chambolle(Sxx, weight=weight, channel_axis=None)
+
+
+def apply_tv_denoising_wave(
+    x: np.ndarray,
+    weight: float = 0.1,
+    n_fft: int = 1024,
+    hop_length: int = 512,
+) -> np.ndarray:
+    """Apply TV denoising in the STFT domain."""
+    f, t, Zxx = stft(x, nperseg=n_fft, noverlap=n_fft - hop_length)
+    mag = np.abs(Zxx) ** 2
+    phase = np.angle(Zxx)
+    mag_f = apply_tv_denoising(mag, weight=weight)
+    Zxx_f = np.sqrt(mag_f) * np.exp(1j * phase)
+    _, out = istft(Zxx_f, nperseg=n_fft, noverlap=n_fft - hop_length)
+    if len(out) > len(x):
+        out = out[: len(x)]
+    else:
+        out = np.pad(out, (0, len(x) - len(out)))
+    return out
+
+
+def _apply_sxx_filter_wave(
+    x: np.ndarray, func, n_fft: int = 1024, hop_length: int = 512
+) -> np.ndarray:
+    f, t, Zxx = stft(x, nperseg=n_fft, noverlap=n_fft - hop_length)
+    mag = np.abs(Zxx)
+    phase = np.angle(Zxx)
+    mag_f = func(mag)
+    Zxx_f = mag_f * np.exp(1j * phase)
+    _, out = istft(Zxx_f, nperseg=n_fft, noverlap=n_fft - hop_length)
+    if len(out) > len(x):
+        out = out[: len(x)]
+    else:
+        out = np.pad(out, (0, len(x) - len(out)))
+    return out
+
+
+def apply_sobel_horizontal_wave(x: np.ndarray) -> np.ndarray:
+    """Apply horizontal Sobel edge filter in the STFT domain."""
+    from skimage.filters import sobel_h
+
+    return _apply_sxx_filter_wave(x, lambda m: np.abs(sobel_h(m)))
+
+
+def apply_white_tophat_wave(x: np.ndarray, size: int = 3) -> np.ndarray:
+    """Apply white top-hat morphological filter in the STFT domain."""
+    from skimage.morphology import white_tophat, disk
+
+    return _apply_sxx_filter_wave(x, lambda m: white_tophat(m, footprint=disk(size)))
+
+
+def apply_frangi_wave(x: np.ndarray, sigma: float = 1.0) -> np.ndarray:
+    """Apply Frangi vesselness filter in the STFT domain."""
+    from skimage.filters import frangi
+
+    return _apply_sxx_filter_wave(x, lambda m: frangi(m, sigmas=[sigma]))
+
+
+def apply_meijering_wave(x: np.ndarray, sigma: float = 1.0) -> np.ndarray:
+    """Apply Meijering neuriteness filter in the STFT domain."""
+    from skimage.filters import meijering
+
+    return _apply_sxx_filter_wave(x, lambda m: meijering(m, sigmas=[sigma]))

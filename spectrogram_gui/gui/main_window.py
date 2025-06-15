@@ -219,12 +219,15 @@ class MainWindow(QMainWindow):
         adaptive_menu = QMenu("Adaptive", self)
         for name in [
             "NLMS",
-            "ALE 2D Doppler",
-            "Wiener Adaptive",
+            "Wiener",
             "Gaussian",
             "Median",
             "Gabor",
-            "TV Denoise Doppler",
+            "TV Denoise",
+            "Sobel Horizontal",
+            "White Top-hat",
+            "Frangi",
+            "Meijering",
             "Track Follow",
             "Enhance Doppler",
         ]:
