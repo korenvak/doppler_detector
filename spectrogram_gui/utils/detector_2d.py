@@ -26,14 +26,14 @@ class DopplerDetector2D:
         gap_prominence_factor=0.7,
         max_freq_jump_hz=20.0,
         gap_max_jump_hz=15.0,
-        max_peaks_per_frame=30,
+        max_peaks_per_frame=10,
         min_track_length_frames=10,
         min_track_avg_power=0.08,
         max_track_freq_std_hz=70.0,
         merge_gap_frames=150,
         merge_max_freq_diff_hz=40.0,
-        power_threshold=0.2,
-        peak_prominence=0.185,
+        power_threshold=0.25,
+        peak_prominence=0.25,
     ):
         self.freq_min = freq_min
         self.freq_max = freq_max
@@ -116,27 +116,11 @@ class DopplerDetector2D:
         return peaks_per_frame, conf_per_frame
 
     # ----- Tracking -----
-    def predict_next_position(self, last_f, prev_f, last_t, prev_t, gap):
-        vel = (self.freqs[last_f] - self.freqs[prev_f]) / max(last_t - prev_t, 1)
-        return self.freqs[last_f] + vel * gap
-
-    def _predict_positions(self, last_f, prev_f, last_t, prev_t, gaps):
-        last_f = np.asarray(last_f)
-        prev_f = np.asarray(prev_f)
-        last_t = np.asarray(last_t)
-        prev_t = np.asarray(prev_t)
-        gaps = np.asarray(gaps)
-        vel = (self.freqs[last_f] - self.freqs[prev_f]) / np.maximum(last_t - prev_t, 1)
-        return self.freqs[last_f] + vel * gaps
-
     def track_peaks_enhanced(self, peaks_per_frame, conf_per_frame, progress_callback=None):
         finished = []
         last_t = np.empty(0, dtype=np.int64)
         last_f = np.empty(0, dtype=np.int64)
-        prev_t = np.empty(0, dtype=np.int64)
-        prev_f = np.empty(0, dtype=np.int64)
         gaps = np.empty(0, dtype=np.int64)
-        conf_tr = np.empty(0, dtype=np.float64)
         traces = []
 
         for ti, (peaks, confs) in enumerate(zip(peaks_per_frame, conf_per_frame)):
@@ -146,105 +130,73 @@ class DopplerDetector2D:
 
             new_last_t = []
             new_last_f = []
-            new_prev_t = []
-            new_prev_f = []
             new_gaps = []
             new_traces = []
-            new_conf = []
 
-            if last_t.size and len(peaks_arr):
-                pred = self._predict_positions(last_f, prev_f, last_t, prev_t, gaps + 1)
-                peak_freqs = self.freqs[peaks_arr]
-                diff = np.abs(peak_freqs[None, :] - pred[:, None])
-                allowed = diff <= self.max_freq_jump_hz * (1 + gaps[:, None] * 0.2)
-                scores = np.where(allowed, confs_arr[None, :] / (1 + diff / 10), -np.inf)
-                best_idx = np.argmax(scores, axis=1)
-                best_score = scores[np.arange(scores.shape[0]), best_idx]
-                order = np.argsort(-best_score)
-
-                for ai in order:
-                    sc = best_score[ai]
-                    if sc == -np.inf:
-                        new_last_t.append(last_t[ai])
-                        new_last_f.append(last_f[ai])
-                        new_prev_t.append(prev_t[ai])
-                        new_prev_f.append(prev_f[ai])
-                        new_gaps.append(gaps[ai] + 1)
-                        new_traces.append(traces[ai])
-                        new_conf.append(conf_tr[ai] * 0.9)
-                        continue
-                    pk = best_idx[ai]
-                    if used[pk]:
-                        new_last_t.append(last_t[ai])
-                        new_last_f.append(last_f[ai])
-                        new_prev_t.append(prev_t[ai])
-                        new_prev_f.append(prev_f[ai])
-                        new_gaps.append(gaps[ai] + 1)
-                        new_traces.append(traces[ai])
-                        new_conf.append(conf_tr[ai] * 0.9)
-                        continue
-                    used[pk] = True
-                    tr = traces[ai] + [(ti, peaks_arr[pk])]
+            for li in range(len(last_t)):
+                prev_freq = self.freqs[last_f[li]]
+                diff = np.abs(self.freqs[peaks_arr] - prev_freq)
+                mask = diff <= self.max_freq_jump_hz
+                if np.any(mask):
+                    cand = np.where(mask)[0]
+                    idx = cand[np.argmax(confs_arr[cand])]
+                    used[idx] = True
+                    fi = peaks_arr[idx]
+                    tr = traces[li] + [(ti, fi)]
                     new_last_t.append(ti)
-                    new_last_f.append(peaks_arr[pk])
-                    new_prev_t.append(last_t[ai])
-                    new_prev_f.append(last_f[ai])
+                    new_last_f.append(fi)
                     new_gaps.append(0)
                     new_traces.append(tr)
-                    new_conf.append(conf_tr[ai] * 0.9 + confs_arr[pk] * 0.1)
+                else:
+                    gap = gaps[li] + 1
+                    if gap > self.max_gap_frames:
+                        finished.append(traces[li])
+                    else:
+                        new_last_t.append(last_t[li])
+                        new_last_f.append(last_f[li])
+                        new_gaps.append(gap)
+                        new_traces.append(traces[li])
 
-            for idx, f_idx in enumerate(peaks_arr):
+            for idx, fi in enumerate(peaks_arr):
                 if not used[idx]:
                     new_last_t.append(ti)
-                    new_last_f.append(f_idx)
-                    new_prev_t.append(ti)
-                    new_prev_f.append(f_idx)
+                    new_last_f.append(fi)
                     new_gaps.append(0)
-                    new_traces.append([(ti, f_idx)])
-                    new_conf.append(confs_arr[idx])
+                    new_traces.append([(ti, fi)])
 
-            keep_idx = []
-            for i, g in enumerate(new_gaps):
-                if g > self.max_gap_frames:
-                    finished.append(new_traces[i])
-                else:
-                    keep_idx.append(i)
+            last_t = np.array(new_last_t, dtype=np.int64)
+            last_f = np.array(new_last_f, dtype=np.int64)
+            gaps = np.array(new_gaps, dtype=np.int64)
+            traces = new_traces
 
-            if keep_idx:
-                last_t = np.array([new_last_t[i] for i in keep_idx], dtype=np.int64)
-                last_f = np.array([new_last_f[i] for i in keep_idx], dtype=np.int64)
-                prev_t = np.array([new_prev_t[i] for i in keep_idx], dtype=np.int64)
-                prev_f = np.array([new_prev_f[i] for i in keep_idx], dtype=np.int64)
-                gaps = np.array([new_gaps[i] for i in keep_idx], dtype=np.int64)
-                traces = [new_traces[i] for i in keep_idx]
-                conf_tr = np.array([new_conf[i] for i in keep_idx], dtype=np.float64)
-                order = np.argsort(-conf_tr)
-                if order.size > 100:
-                    order = order[:100]
-                last_t = last_t[order]
-                last_f = last_f[order]
-                prev_t = prev_t[order]
-                prev_f = prev_f[order]
-                gaps = gaps[order]
-                conf_tr = conf_tr[order]
-                traces = [traces[i] for i in order]
-            else:
-                last_t = np.empty(0, dtype=np.int64)
-                last_f = np.empty(0, dtype=np.int64)
-                prev_t = np.empty(0, dtype=np.int64)
-                prev_f = np.empty(0, dtype=np.int64)
-                gaps = np.empty(0, dtype=np.int64)
-                conf_tr = np.empty(0, dtype=np.float64)
-                traces = []
+            keep = gaps <= self.max_gap_frames
+            if not np.all(keep):
+                finished.extend([traces[i] for i, k in enumerate(keep) if not k])
+                last_t = last_t[keep]
+                last_f = last_f[keep]
+                gaps = gaps[keep]
+                traces = [traces[i] for i, k in enumerate(keep) if k]
 
             if progress_callback and ti % 10 == 0:
                 progress_callback(ti)
 
-        for tr in traces:
-            finished.append(tr)
+        finished.extend(traces)
         if progress_callback:
             progress_callback(len(peaks_per_frame))
-        return finished
+
+        valid = []
+        S = self.Sxx_filt
+        f = self.freqs
+        for tr in finished:
+            if len(tr) < self.min_track_length_frames:
+                continue
+            powers = np.array([S[fi, ti] for ti, fi in tr])
+            if powers.mean() < self.min_track_avg_power:
+                continue
+            if np.std(f[[pt[1] for pt in tr]]) > self.max_track_freq_std_hz:
+                continue
+            valid.append(tr)
+        return valid
 
     # ----- Filtering -----
     def filter_and_score_tracks(self, tracks):
