@@ -196,23 +196,14 @@ def calculate_flight_dynamics(flight_df, sensor_lat=None, sensor_lon=None):
         flight_df['parsed_time'] = pd.date_range(start='2020-01-01', periods=len(flight_df), freq='S')
         flight_df['time_diff'] = 1.0
 
-    # Calculate distances between consecutive points (3D)
-    coord_cols = ['GPS Lat', 'GPS Lon']
-    if 'GPS Alt' in flight_df.columns:
-        coord_cols.append('GPS Alt')
-    coords = flight_df[coord_cols].values
-    distances = [0]
-    from geopy.distance import geodesic
-    for i in range(1, len(coords)):
-        lat1, lon1 = coords[i-1][:2]
-        lat2, lon2 = coords[i][:2]
-        alt1 = coords[i-1][2] if len(coords[i-1]) > 2 else 0
-        alt2 = coords[i][2] if len(coords[i]) > 2 else 0
-        dist_2d = geodesic((lat1, lon1), (lat2, lon2)).meters
-        dist_3d = np.sqrt(dist_2d**2 + (alt2 - alt1)**2)
-        distances.append(dist_3d)
+    lat = flight_df['GPS Lat'].to_numpy()
+    lon = flight_df['GPS Lon'].to_numpy()
+    alt = flight_df['GPS Alt'].fillna(0).to_numpy() if 'GPS Alt' in flight_df.columns else np.zeros(len(lat))
 
-    flight_df['distance'] = distances
+    d2d = haversine_vec(lat[:-1], lon[:-1], lat[1:], lon[1:])
+    dz = alt[1:] - alt[:-1]
+    dist_inc = np.sqrt(d2d**2 + dz**2)
+    flight_df['distance'] = np.insert(dist_inc, 0, 0)
 
     # Calculate speed (m/s)
     flight_df['speed'] = flight_df['distance'] / flight_df['time_diff'].replace(0, 1)
@@ -237,39 +228,25 @@ def calculate_flight_dynamics(flight_df, sensor_lat=None, sensor_lon=None):
 
     # Relative movement to sensor if provided
     if sensor_lat is not None and sensor_lon is not None:
-        from geopy.distance import geodesic
-        sensor_coord = (sensor_lat, sensor_lon)
-        dist_sensor = []
-        for row in coords:
-            lat, lon = row[:2]
-            alt = row[2] if len(row) > 2 else 0
-            dist_2d = geodesic(sensor_coord, (lat, lon)).meters
-            dist_sensor.append(np.sqrt(dist_2d**2 + alt**2))
+        d2_sensor = haversine_vec(lat, lon, sensor_lat, sensor_lon)
+        dist_sensor = np.sqrt(d2_sensor**2 + alt**2)
         flight_df['dist_to_sensor'] = dist_sensor
-        flight_df['dist_change'] = flight_df['dist_to_sensor'].diff().fillna(0)
-        flight_df['relative_movement'] = flight_df['dist_change'].apply(
-            lambda d: 'approaching' if d < -1 else (
-                'departing' if d > 1 else 'steady')
-        )
+        flight_df['dist_change'] = np.insert(np.diff(dist_sensor), 0, 0)
+        flight_df['relative_movement'] = [
+            'approaching' if d < -1 else ('departing' if d > 1 else 'steady')
+            for d in flight_df['dist_change']
+        ]
     else:
         flight_df['relative_movement'] = 'unknown'
 
     # Calculate heading changes (turning angles)
-    headings = []
-    for i in range(1, len(coords)):
-        lat1, lon1 = coords[i - 1][:2]
-        lat2, lon2 = coords[i][:2]
-        # Calculate bearing
-        dlon = np.radians(lon2 - lon1)
-        lat1_rad = np.radians(lat1)
-        lat2_rad = np.radians(lat2)
-        y = np.sin(dlon) * np.cos(lat2_rad)
-        x = np.cos(lat1_rad) * np.sin(lat2_rad) - np.sin(lat1_rad) * np.cos(lat2_rad) * np.cos(dlon)
-        bearing = np.degrees(np.arctan2(y, x))
-        headings.append(bearing)
-
-    headings = [0] + headings
-    flight_df['heading'] = headings
+    dlon = np.radians(lon[1:] - lon[:-1])
+    lat1_rad = np.radians(lat[:-1])
+    lat2_rad = np.radians(lat[1:])
+    y = np.sin(dlon) * np.cos(lat2_rad)
+    x = np.cos(lat1_rad) * np.sin(lat2_rad) - np.sin(lat1_rad) * np.cos(lat2_rad) * np.cos(dlon)
+    heading = np.concatenate(([0.0], np.degrees(np.arctan2(y, x))))
+    flight_df['heading'] = heading
 
     # Calculate heading change (turning rate)
     flight_df['heading_change'] = flight_df['heading'].diff()
@@ -442,12 +419,13 @@ def load_flight_path_with_analytics(flight_number):
 
         coords = df[['GPS Lat', 'GPS Lon']].values.tolist()
 
-        # Calculate flight statistics
-        total_distance = 0
+        # Calculate flight statistics using vectorized haversine for speed
+        total_distance = 0.0
         if len(coords) > 1:
-            from geopy.distance import geodesic
-            for i in range(1, len(coords)):
-                total_distance += geodesic(coords[i - 1], coords[i]).meters
+            lat = df['GPS Lat'].to_numpy()
+            lon = df['GPS Lon'].to_numpy()
+            d2d = haversine_vec(lat[:-1], lon[:-1], lat[1:], lon[1:])
+            total_distance = float(np.nansum(d2d))
 
         stats = {
             'total_distance_km': total_distance / 1000,
@@ -472,6 +450,22 @@ def load_flight_path_with_analytics(flight_number):
 def load_flight_path(flight_number):
     coords, _ = load_flight_path_with_analytics(flight_number)
     return coords
+
+
+@lru_cache(maxsize=None)
+def load_flight_dataframe(flight_number):
+    """Load flight CSV and cache the DataFrame."""
+    path = os.path.join(trace_dir, f"Flight_{flight_number}_logs.csv")
+    df = pd.read_csv(path)
+    df['Flight number'] = flight_number
+    return df
+
+
+@lru_cache(maxsize=None)
+def get_flight_dynamics(flight_number):
+    """Get precomputed flight dynamics for a flight."""
+    df = load_flight_dataframe(flight_number)
+    return calculate_flight_dynamics(df)
 
 
 @lru_cache(maxsize=32)
@@ -1565,12 +1559,7 @@ def update_3d_view(flight, options, pixel_selection):
         return fig
 
     try:
-        flight_path = os.path.join(trace_dir, f"Flight_{flight}_logs.csv")
-        flight_df = pd.read_csv(flight_path)
-
-        flight_df['Flight number'] = flight
-
-        flight_df = calculate_flight_dynamics(flight_df)
+        flight_df = get_flight_dynamics(flight)
 
         fig = go.Figure()
 
@@ -1828,7 +1817,7 @@ if __name__ == '__main__':
     print("✨ New features: 3D visualization and movement analysis")
     print("📡 Dashboard will be available at: http://localhost:8050")
     print("\n⚠️ Make sure you have all required packages installed:")
-    print("   pip install scipy geopy")
+    print("   pip install scipy")
     print("\n🔍 Look for the tabs above the map to access new features!")
     # Use localhost instead of 0.0.0.0 for local development
     app.run(debug=True, host='127.0.0.1', port=8050)
