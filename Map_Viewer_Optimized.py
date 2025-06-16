@@ -275,12 +275,13 @@ def get_pixel_coverage(pixel: int, flight: int):
 
 
 def generate_color_schemes():
+    # Colors selected to stand out from the flight path (#00BFFF)
     pixel_colors_list = [
-        "#FF6B6B", "#4ECDC4", "#45B7D1", "#FFA07A", "#98D8C8",
-        "#F7DC6F", "#BB8FCE", "#85C1E9", "#F8C471", "#82E0AA"
+        "#1b9e77", "#d95f02", "#7570b3", "#e7298a", "#66a61e",
+        "#e6ab02", "#a6761d", "#666666", "#f7b7a3", "#6f5b4b"
     ]
     type_colors_list = [
-        "#2E86AB", "#A23B72", "#F18F01", "#C73E1D", "#8E44AD"
+        "#1b9e77", "#d95f02", "#7570b3", "#e7298a", "#66a61e"
     ]
 
     pixel_colors = {}
@@ -495,18 +496,20 @@ def update_map_optimized(flight, view_mode, selection, display_options, map_styl
                             children=[dl.Popup(build_popup(px, m, snap))]
                         )
                     )
-        for px, (lat, lon, stype) in sensor_positions.items():
-            is_selected = px in pixels
+        for px in pixels:
+            if px not in sensor_positions:
+                continue
+            lat, lon, stype = sensor_positions[px]
             col = pixel_colors.get(px, '#666666')
             cov = get_pixel_coverage(px, flight)
             popup = build_sensor_popup(px, stype, flight, cov)
             layers.append(
                 dl.CircleMarker(
                     center=[lat, lon],
-                    radius=10 if is_selected else 6,
+                    radius=10,
                     color=col,
                     fill=True,
-                    fillOpacity=1.0 if is_selected else 0.5,
+                    fillOpacity=1.0,
                     id=f'sensor-{px}',
                     children=[dl.Tooltip(f"Pixel {px} ({stype})"), dl.Popup(popup)]
                 )
