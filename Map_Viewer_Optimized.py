@@ -80,6 +80,7 @@ class DataLoader:
 
         # Pre-load all pixel data
         self._preload_pixel_data()
+        root.destroy()
 
         return self
     def _preload_pixel_data(self):
@@ -111,11 +112,14 @@ class DataLoader:
 
     def get_flight_data(self, flight_number):
         """Get cached flight data"""
+        flight_number = int(flight_number)
         if flight_number not in self.flight_data_cache:
             path = os.path.join(self.trace_dir, f"Flight_{flight_number}_logs.csv")
             if os.path.exists(path):
                 df = pd.read_csv(path)
                 df['Flight number'] = flight_number
+                if len(self.flight_data_cache) >= 3:
+                    self.flight_data_cache.pop(next(iter(self.flight_data_cache)))
                 self.flight_data_cache[flight_number] = df
             else:
                 return None
@@ -124,8 +128,11 @@ class DataLoader:
     def get_image(self, filename):
         """Get cached image data"""
         if filename not in self.image_cache:
-            self.image_cache[filename] = self._load_image(filename)
-        return self.image_cache[filename]
+            img = self._load_image(filename)
+            if img and len(self.image_cache) >= 50:
+                self.image_cache.pop(next(iter(self.image_cache)))
+            self.image_cache[filename] = img
+        return self.image_cache.get(filename)
 
     def _load_image(self, filename):
         """Load image with simplified path resolution"""
@@ -417,19 +424,22 @@ def update_dropdown_options(view_mode):
 )
 def update_map_optimized(flight, view_mode, selection, display_options, map_style):
     if flight is None:
-        return [dl.TileLayer(url=OSM_URL if map_style != 'satellite' else SAT_URL)]
+        tile = SAT_URL if map_style == 'satellite' else OSM_URL
+        return [dl.TileLayer(url=tile, id='base', key=f'base-{map_style}')]
 
     tile_url = SAT_URL if map_style == 'satellite' else OSM_URL
-    layers = [dl.TileLayer(url=tile_url)]
+    layers = [dl.TileLayer(url=tile_url, id='base', key=f'base-{map_style}')]
 
     if 'fiber' in (display_options or []):
-        layers.append(dl.Polyline(positions=fiber_coords, color='#FFD700', weight=3, opacity=0.8))
+        layers.append(dl.Polyline(positions=fiber_coords, color='#FFD700', weight=3, opacity=0.8,
+                                  id='fiber', key='fiber'))
 
     if 'flight_path' in (display_options or []):
         flight_data = data_loader.get_flight_data(flight)
         if flight_data is not None:
             coords = flight_data[['GPS Lat', 'GPS Lon']].values.tolist()
-            layers.append(dl.Polyline(positions=coords, color='#00BFFF', weight=2, opacity=0.7))
+            layers.append(dl.Polyline(positions=coords, color='#00BFFF', weight=2, opacity=0.7,
+                                      id=f'flight-{flight}', key=f'flight-{flight}'))
 
     if view_mode == 'individual':
         pixels = selection or []
@@ -437,8 +447,10 @@ def update_map_optimized(flight, view_mode, selection, display_options, map_styl
             key = (flight, px)
             windows = dict_pixel.get(key, [])
             col = pixel_colors.get(px, '#0066CC')
-            for coords, meta, snap in windows:
-                layers.append(dl.Polyline(positions=coords, color=col, weight=4, opacity=0.8))
+            for w_idx, (coords, meta, snap) in enumerate(windows):
+                layers.append(dl.Polyline(positions=coords, color=col, weight=4, opacity=0.8,
+                                          id=f'trace-{flight}-{px}-{w_idx}',
+                                          key=f'trace-{flight}-{px}-{w_idx}'))
                 step = max(1, len(coords) // 20)
                 for i in range(0, len(coords), step):
                     lat, lon = coords[i]
@@ -459,6 +471,8 @@ def update_map_optimized(flight, view_mode, selection, display_options, map_styl
                             color=marker_color,
                             fill=True,
                             fillOpacity=0.8,
+                            id=f'mark-{flight}-{px}-{window_idx}-{i}',
+                            key=f'mark-{flight}-{px}-{window_idx}-{i}',
                             children=[dl.Popup(build_popup(px, m, snap))]
                         )
                     )
@@ -474,6 +488,8 @@ def update_map_optimized(flight, view_mode, selection, display_options, map_styl
                     color=col,
                     fill=True,
                     fillOpacity=1.0 if is_selected else 0.5,
+                    id=f'sensor-{px}',
+                    key=f'sensor-{px}',
                     children=[dl.Tooltip(f"Pixel {px} ({stype})"), dl.Popup(popup)]
                 )
             )
@@ -485,8 +501,10 @@ def update_map_optimized(flight, view_mode, selection, display_options, map_styl
             for px in pixels_of_type:
                 key = (flight, px)
                 windows = dict_pixel.get(key, [])
-                for coords, _, _ in windows:
-                    layers.append(dl.Polyline(positions=coords, color=col, weight=4, opacity=0.8))
+                for w_idx, (coords, _, _) in enumerate(windows):
+                    layers.append(dl.Polyline(positions=coords, color=col, weight=4, opacity=0.8,
+                                              id=f'trace-{flight}-{px}-{w_idx}',
+                                              key=f'trace-{flight}-{px}-{w_idx}'))
                 lat, lon, _ = sensor_positions[px]
                 cov = get_pixel_coverage(px, flight)
                 popup = build_sensor_popup(px, stype, flight, cov)
@@ -497,6 +515,8 @@ def update_map_optimized(flight, view_mode, selection, display_options, map_styl
                         color=col,
                         fill=True,
                         fillOpacity=0.6,
+                        id=f'sensor-{px}',
+                        key=f'sensor-{px}',
                         children=[dl.Tooltip(f"Pixel {px} ({stype})"), dl.Popup(popup)]
                     )
                 )
