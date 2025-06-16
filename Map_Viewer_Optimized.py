@@ -472,7 +472,14 @@ def update_map_optimized(flight, view_mode, selection, display_options, map_styl
                         id=f'trace-{flight}-{px}-{w_idx}'
                     )
                 )
-                step = max(1, len(coords) // 20)
+                # Adapt marker density based on number of selected pixels
+                num_sel = len(pixels)
+                max_marks = 20
+                if num_sel >= 4:
+                    max_marks = 10
+                if num_sel >= 8:
+                    max_marks = 5
+                step = max(1, len(coords) // max_marks)
                 for i in range(0, len(coords), step):
                     lat, lon = coords[i]
                     m = meta[i]
