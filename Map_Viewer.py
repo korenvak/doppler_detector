@@ -612,14 +612,23 @@ def process_flight_data():
         if window.empty:
             continue
 
-        # Calculate movement relative to this pixel's sensor
-        rel_window = calculate_relative_movement_to_pixel(
-            dfx[dfx['Flight number'] == fl],
-            ev['Sensor Lat'],
-            ev['Sensor Lon'],
-            start,
-            end
-        )
+        required_cols = [
+            'lat','lon','alt','dt','dist3d','speed','delta_speed',
+            'heading','delta_heading','distance_to_sensor','delta_distance',
+            'pixel_movement_type'
+        ]
+
+        if all(c in window.columns for c in required_cols):
+            rel_window = window.copy()
+        else:
+            # Calculate movement relative to this pixel's sensor
+            rel_window = calculate_relative_movement_to_pixel(
+                dfx[dfx['Flight number'] == fl],
+                ev['Sensor Lat'],
+                ev['Sensor Lon'],
+                start,
+                end
+            )
         if rel_window.empty:
             continue
 

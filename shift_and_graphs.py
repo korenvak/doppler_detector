@@ -14,6 +14,7 @@ import matplotlib as mpl
 from geopy.distance import geodesic
 import tkinter as tk
 from tkinter import filedialog
+import numpy as np
 
 # ---------------------- STYLE ------------------------------------------
 LIGHT_BLUE = "#73C2FB"
@@ -68,6 +69,86 @@ def build_track_dist(df_trace: pd.DataFrame) -> dict[int, pd.DataFrame]:
         df['track_dist_m'] = pd.Series(segs, index=df.index).cumsum()
         tracks[fl] = df[['real time','track_dist_m']].rename(columns={'real time':'dt'})
     return tracks
+
+# ----------------------------------------------------------------------
+# Additional analytics for each extracted window
+def _movement_metrics(df: pd.DataFrame, sensor_lat: float, sensor_lon: float) -> pd.DataFrame:
+    """Compute relative movement metrics for a flight window."""
+    df = df.copy()
+    df['parsed_time'] = pd.to_datetime(df['real time'], errors='coerce')
+    if len(df) < 2:
+        df['time'] = df['parsed_time']
+        df['lat'] = df['GPS Lat']
+        df['lon'] = df['GPS Lon']
+        df['alt'] = df.get('GPS Alt', 0)
+        for col in ['dt','dist3d','speed','delta_speed','heading','delta_heading','distance_to_sensor','delta_distance','pixel_movement_type']:
+            df[col] = 0.0 if 'pixel_movement_type' not in col else 'cruising'
+        return df
+
+    lat = df['GPS Lat'].to_numpy()
+    lon = df['GPS Lon'].to_numpy()
+    alt = df.get('GPS Alt', pd.Series(0, index=df.index)).fillna(0).to_numpy()
+
+    dt = df['parsed_time'].diff().dt.total_seconds().fillna(1).to_numpy()
+
+    lat1 = lat[:-1]; lon1 = lon[:-1]
+    lat2 = lat[1:]; lon2 = lon[1:]
+    d2d = haversine(lat1, lon1, lat2, lon2)
+    dz = alt[1:] - alt[:-1]
+    dist3d = np.concatenate(([0.0], np.sqrt(d2d**2 + dz**2)))
+
+    dlon = np.radians(lon2 - lon1)
+    lat1_rad = np.radians(lat1)
+    lat2_rad = np.radians(lat2)
+    y = np.sin(dlon) * np.cos(lat2_rad)
+    x = np.cos(lat1_rad) * np.sin(lat2_rad) - np.sin(lat1_rad) * np.cos(lat2_rad) * np.cos(dlon)
+    heading = np.concatenate(([0.0], np.degrees(np.arctan2(y, x))))
+
+    speed = dist3d / np.where(dt == 0, 1, dt)
+    delta_speed = np.insert(np.diff(speed), 0, 0)
+
+    delta_heading = np.insert(np.diff(heading), 0, 0)
+    delta_heading = (delta_heading + 180) % 360 - 180
+
+    sensor_alt = df['GPS Alt'].min() if 'GPS Alt' in df.columns else 0
+    d2_sensor = haversine(lat, lon, sensor_lat, sensor_lon)
+    dist_to_sensor = np.sqrt(d2_sensor**2 + (alt - sensor_alt) ** 2)
+    delta_dist = np.insert(np.diff(dist_to_sensor), 0, 0)
+
+    movement = []
+    for i in range(len(df)):
+        mv = []
+        if abs(delta_heading[i]) > 15:
+            mv.append('turning')
+        if delta_dist[i] < -1:
+            mv.append('approaching')
+        elif delta_dist[i] > 1:
+            mv.append('departing')
+        if delta_speed[i] > 2:
+            mv.append('accelerating')
+        elif delta_speed[i] < -2:
+            mv.append('decelerating')
+        if speed[i] < 1:
+            mv.append('hovering')
+        if not mv:
+            mv = ['cruising']
+        movement.append(', '.join(mv))
+
+    df['time'] = df['parsed_time']
+    df['lat'] = lat
+    df['lon'] = lon
+    df['alt'] = alt
+    df['dt'] = dt
+    df['dist3d'] = dist3d
+    df['speed'] = speed
+    df['delta_speed'] = delta_speed
+    df['heading'] = heading
+    df['delta_heading'] = delta_heading
+    df['distance_to_sensor'] = dist_to_sensor
+    df['delta_distance'] = delta_dist
+    df['pixel_movement_type'] = movement
+
+    return df
 
 # ---------------------- MAIN -------------------------------------------
 def main():
@@ -192,6 +273,7 @@ def main():
                 geodesic((row['GPS Lat'],row['GPS Lon']), (row['Sensor Lat'],row['Sensor Lon'])).km*1000,
                 row['GPS Alt']
             ), axis=1)
+            w = _movement_metrics(w, r['Sensor Lat'], r['Sensor Lon'])
             rows.append(w)
         if rows:
             out = pd.concat(rows, ignore_index=True)
