@@ -425,21 +425,35 @@ def update_dropdown_options(view_mode):
 def update_map_optimized(flight, view_mode, selection, display_options, map_style):
     if flight is None:
         tile = SAT_URL if map_style == 'satellite' else OSM_URL
-        return [dl.TileLayer(url=tile, id='base', key=f'base-{map_style}')]
+        return [dl.TileLayer(url=tile, id='base')]
 
     tile_url = SAT_URL if map_style == 'satellite' else OSM_URL
-    layers = [dl.TileLayer(url=tile_url, id='base', key=f'base-{map_style}')]
+    layers = [dl.TileLayer(url=tile_url, id='base')]
 
     if 'fiber' in (display_options or []):
-        layers.append(dl.Polyline(positions=fiber_coords, color='#FFD700', weight=3, opacity=0.8,
-                                  id='fiber', key='fiber'))
+        layers.append(
+            dl.Polyline(
+                positions=fiber_coords,
+                color='#FFD700',
+                weight=3,
+                opacity=0.8,
+                id='fiber'
+            )
+        )
 
     if 'flight_path' in (display_options or []):
         flight_data = data_loader.get_flight_data(flight)
         if flight_data is not None:
             coords = flight_data[['GPS Lat', 'GPS Lon']].values.tolist()
-            layers.append(dl.Polyline(positions=coords, color='#00BFFF', weight=2, opacity=0.7,
-                                      id=f'flight-{flight}', key=f'flight-{flight}'))
+            layers.append(
+                dl.Polyline(
+                    positions=coords,
+                    color='#00BFFF',
+                    weight=2,
+                    opacity=0.7,
+                    id=f'flight-{flight}'
+                )
+            )
 
     if view_mode == 'individual':
         pixels = selection or []
@@ -448,9 +462,15 @@ def update_map_optimized(flight, view_mode, selection, display_options, map_styl
             windows = dict_pixel.get(key, [])
             col = pixel_colors.get(px, '#0066CC')
             for w_idx, (coords, meta, snap) in enumerate(windows):
-                layers.append(dl.Polyline(positions=coords, color=col, weight=4, opacity=0.8,
-                                          id=f'trace-{flight}-{px}-{w_idx}',
-                                          key=f'trace-{flight}-{px}-{w_idx}'))
+                layers.append(
+                    dl.Polyline(
+                        positions=coords,
+                        color=col,
+                        weight=4,
+                        opacity=0.8,
+                        id=f'trace-{flight}-{px}-{w_idx}'
+                    )
+                )
                 step = max(1, len(coords) // 20)
                 for i in range(0, len(coords), step):
                     lat, lon = coords[i]
@@ -472,7 +492,6 @@ def update_map_optimized(flight, view_mode, selection, display_options, map_styl
                             fill=True,
                             fillOpacity=0.8,
                             id=f'mark-{flight}-{px}-{w_idx}-{i}',
-                            key=f'mark-{flight}-{px}-{w_idx}-{i}',
                             children=[dl.Popup(build_popup(px, m, snap))]
                         )
                     )
@@ -489,7 +508,6 @@ def update_map_optimized(flight, view_mode, selection, display_options, map_styl
                     fill=True,
                     fillOpacity=1.0 if is_selected else 0.5,
                     id=f'sensor-{px}',
-                    key=f'sensor-{px}',
                     children=[dl.Tooltip(f"Pixel {px} ({stype})"), dl.Popup(popup)]
                 )
             )
@@ -502,9 +520,15 @@ def update_map_optimized(flight, view_mode, selection, display_options, map_styl
                 key = (flight, px)
                 windows = dict_pixel.get(key, [])
                 for w_idx, (coords, _, _) in enumerate(windows):
-                    layers.append(dl.Polyline(positions=coords, color=col, weight=4, opacity=0.8,
-                                              id=f'trace-{flight}-{px}-{w_idx}',
-                                              key=f'trace-{flight}-{px}-{w_idx}'))
+                    layers.append(
+                        dl.Polyline(
+                            positions=coords,
+                            color=col,
+                            weight=4,
+                            opacity=0.8,
+                            id=f'trace-{flight}-{px}-{w_idx}'
+                        )
+                    )
                 lat, lon, _ = sensor_positions[px]
                 cov = get_pixel_coverage(px, flight)
                 popup = build_sensor_popup(px, stype, flight, cov)
@@ -516,7 +540,6 @@ def update_map_optimized(flight, view_mode, selection, display_options, map_styl
                         fill=True,
                         fillOpacity=0.6,
                         id=f'sensor-{px}',
-                        key=f'sensor-{px}',
                         children=[dl.Tooltip(f"Pixel {px} ({stype})"), dl.Popup(popup)]
                     )
                 )
