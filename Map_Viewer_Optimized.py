@@ -239,16 +239,18 @@ fiber_coords = df_fiber[['Latitude', 'Longitude']].values.tolist()
 flight_files = glob.glob(os.path.join(data_loader.trace_dir, "Flight_*_logs.csv"))
 flight_numbers = sorted(int(os.path.basename(p).split("_")[1]) for p in flight_files)
 
+# Sensor static info
 sensor_positions = {}
 for px in df_sum['Pixel'].unique():
     row = df_sum[df_sum['Pixel'] == px].iloc[0]
     sensor_positions[int(px)] = (
         row['Sensor Lat'],
         row['Sensor Lon'],
-        row['Sensor Type'],
-        row.get('min_dist3D', 0),
-        row.get('max_dist3D', 0)
+        row['Sensor Type']
     )
+
+# Max distance per pixel/flight
+max_dist_by_pixel_flight = df_sum.groupby(['Flight number', 'Pixel'])['max_dist3D'].max().to_dict()
 
 if 'Event Lat' in df_sum and 'Event Lon' in df_sum:
     center = [df_sum['Event Lat'].mean(), df_sum['Event Lon'].mean()]
@@ -319,11 +321,20 @@ def build_popup(px, meta, snapshot=None):
             items.append(html.Img(src=img, style={'width': '200px'}))
     return html.Div(items)
 
-def build_sensor_popup(px, stype, min_d, max_d, coverage):
+def get_max_distance(px: int, fl: int):
+    """Return max distance for pixel and flight."""
+    return max_dist_by_pixel_flight.get((fl, px))
+
+
+def build_sensor_popup(px, stype, flight, coverage):
     """Popup for sensor markers including coverage info."""
-    rows = [html.H6(f"Pixel {px} ({stype})"),
-            html.P(f"Min: {min_d:.1f} m", className="mb-0"),
-            html.P(f"Max: {max_d:.1f} m", className="mb-0")]
+    rows = [html.Div([
+        html.I(className="fas fa-map-marker-alt me-1"),
+        html.Strong(f"Pixel {px} ({stype})")
+    ])]
+    max_d = get_max_distance(px, flight)
+    if max_d is not None:
+        rows.append(html.P(f"Max distance: {max_d:.1f} m", className="mb-0"))
     if coverage is not None:
         rows.append(html.P(f"Coverage: {coverage:.1f}%", className="mb-0"))
     return html.Div(rows, className='small')
@@ -368,22 +379,11 @@ map_tab = html.Div([
             ], className="mt-2")
         ])
     ], className="mb-3"),
-    dl.Map(id='map', center=center, zoom=13, children=[dl.TileLayer(url=OSM_URL)], style={'width': '100%', 'height': '70vh'}),
-    html.Div(id='coverage-display', className="mt-3")
+    dl.Map(id='map', center=center, zoom=13, children=[dl.TileLayer(url=OSM_URL)], style={'width': '100%', 'height': '70vh'})
 ])
 
 analysis_tab = html.Div([
     html.H4("Analysis Graphs", className="mt-3"),
-    dbc.Row([
-        dbc.Col([
-            html.Label("Flight", className="fw-bold"),
-            dcc.Dropdown(id='analysis-flight', options=[{'label': f'Flight {f}', 'value': f} for f in flight_numbers], value=flight_numbers[0] if flight_numbers else None)
-        ], md=3),
-        dbc.Col([
-            html.Label("Sensor Type", className="fw-bold"),
-            dcc.Dropdown(id='analysis-type', options=[{'label': t, 'value': t} for t in sorted(df_sum['Sensor Type'].unique())], placeholder='Type')
-        ], md=3)
-    ], className="mb-2"),
     html.Div(id='analysis-images')
 ])
 
@@ -462,11 +462,11 @@ def update_map_optimized(flight, view_mode, selection, display_options, map_styl
                             children=[dl.Popup(build_popup(px, m, snap))]
                         )
                     )
-        for px, (lat, lon, stype, min_d, max_d) in sensor_positions.items():
+        for px, (lat, lon, stype) in sensor_positions.items():
             is_selected = px in pixels
             col = pixel_colors.get(px, '#666666')
             cov = get_pixel_coverage(px, flight)
-            popup = build_sensor_popup(px, stype, min_d, max_d, cov)
+            popup = build_sensor_popup(px, stype, flight, cov)
             layers.append(
                 dl.CircleMarker(
                     center=[lat, lon],
@@ -481,61 +481,62 @@ def update_map_optimized(flight, view_mode, selection, display_options, map_styl
         selected_types = selection or []
         for stype in selected_types:
             col = type_colors[stype]
-            pixels_of_type = [px for px, (_, _, ptype, _, _) in sensor_positions.items() if ptype == stype]
+            pixels_of_type = [px for px, (_, _, ptype) in sensor_positions.items() if ptype == stype]
             for px in pixels_of_type:
                 key = (flight, px)
                 windows = dict_pixel.get(key, [])
                 for coords, _, _ in windows:
                     layers.append(dl.Polyline(positions=coords, color=col, weight=4, opacity=0.8))
+                lat, lon, _ = sensor_positions[px]
+                cov = get_pixel_coverage(px, flight)
+                popup = build_sensor_popup(px, stype, flight, cov)
+                layers.append(
+                    dl.CircleMarker(
+                        center=[lat, lon],
+                        radius=6,
+                        color=col,
+                        fill=True,
+                        fillOpacity=0.6,
+                        children=[dl.Tooltip(f"Pixel {px} ({stype})"), dl.Popup(popup)]
+                    )
+                )
 
     return layers
 
 
-@app.callback(
-    Output('coverage-display', 'children'),
-    [Input('flight-dd', 'value'), Input('view-mode', 'value'), Input('selection-dd', 'value')]
-)
-def update_coverage_display(flight, view_mode, selection):
-    if not flight or not selection:
-        return ""
-
-    coverage_cards = []
-
-    if view_mode == 'individual' and coverage_per_pixel is not None:
-        flight_col = f"Flight_{flight}"
-        for px in selection:
-            if px in coverage_per_pixel.index and flight_col in coverage_per_pixel.columns:
-                coverage = coverage_per_pixel.loc[px, flight_col]
-                if data_loader.graphs_dir:
-                    img_filename = f"donut_px_{px}_fl_{flight}.png"
-                    img_data = data_loader.get_image(img_filename)
-                    if img_data:
-                        coverage_cards.append(dbc.Col([dbc.Card([dbc.CardBody([html.H6(f"Pixel {px}"), html.Img(src=img_data, style={'width': '100%', 'maxWidth': '200px'})])])], md=3))
-                    else:
-                        coverage_cards.append(dbc.Col([dbc.Card([dbc.CardBody([html.H6(f"Pixel {px}"), html.H2(f"{coverage:.1f}%", className="text-primary"), html.P("Coverage", className="text-muted")])])], md=3))
-
-    return dbc.Row(coverage_cards) if coverage_cards else ""
 
 
 @app.callback(
     Output('analysis-images', 'children'),
-    [Input('analysis-flight', 'value'), Input('analysis-type', 'value')]
+    [Input('flight-dd', 'value'), Input('view-mode', 'value'), Input('selection-dd', 'value')]
 )
-def update_analysis_images(flight, sensor_type):
-    imgs = []
-    if not data_loader.graphs_dir:
+def update_analysis_images(flight, view_mode, selection):
+    if not data_loader.graphs_dir or not flight:
         return ""
+
+    imgs = []
     avg_img = data_loader.get_image('avg_coverage_per_pixel.png')
     if avg_img:
         imgs.append(html.Img(src=avg_img, style={'maxWidth': '400px', 'width': '100%'}))
-    if flight is not None:
-        union_img = data_loader.get_image(f'union_all_fl_{flight}.png')
-        if union_img:
-            imgs.append(html.Img(src=union_img, style={'maxWidth': '400px', 'width': '100%'}))
-        if sensor_type:
-            type_img = data_loader.get_image(f'coverage_type_{sensor_type}_fl_{flight}.png')
+
+    union_img = data_loader.get_image(f'union_all_fl_{flight}.png')
+    if union_img:
+        imgs.append(html.Img(src=union_img, style={'maxWidth': '400px', 'width': '100%'}))
+
+    if view_mode == 'individual':
+        for px in (selection or []):
+            donut = data_loader.get_image(f'donut_px_{px}_fl_{flight}.png')
+            if donut:
+                imgs.append(html.Img(src=donut, style={'maxWidth': '400px', 'width': '100%'}))
+            hist = data_loader.get_image(f'hist_pixel_{px}_flight_{flight}.png')
+            if hist:
+                imgs.append(html.Img(src=hist, style={'maxWidth': '400px', 'width': '100%'}))
+    else:
+        for stype in (selection or []):
+            type_img = data_loader.get_image(f'coverage_type_{stype}_fl_{flight}.png')
             if type_img:
                 imgs.append(html.Img(src=type_img, style={'maxWidth': '400px', 'width': '100%'}))
+
     if not imgs:
         return ""
     return dbc.Row([dbc.Col(img, md=4) for img in imgs])
