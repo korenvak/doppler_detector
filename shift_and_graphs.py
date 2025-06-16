@@ -64,7 +64,7 @@ def compute_coverage_by_track(coords: pd.Series, total_track: float, max_gap_m: 
 def build_track_dist(df_trace: pd.DataFrame) -> dict[int, pd.DataFrame]:
     tracks: dict[int, pd.DataFrame] = {}
     for fl, grp in df_trace.groupby('Flight number'):
-        df = grp.sort_values('real time').reset_index(drop=True)
+        df = grp.dropna(subset=['real time']).sort_values('real time').reset_index(drop=True)
         lats = df['GPS Lat'].to_numpy(); lons = df['GPS Lon'].to_numpy()
         segs = [0.0] + [
             haversine(lats[i-1], lons[i-1], lats[i], lons[i])
@@ -200,6 +200,7 @@ def main():
                 pd.to_datetime(df['Israel Time'], errors='coerce')
                   .dt.tz_convert('Asia/Jerusalem').dt.tz_localize(None)
             )
+            df.dropna(subset=['real time'], inplace=True)
             df['GPS Lat'] = df['GPS[0].Lat'] / 1e7
             df['GPS Lon'] = df['GPS[0].Lng'] / 1e7
             df['GPS Alt'] = df['GPS[0].Alt']
@@ -207,6 +208,7 @@ def main():
             logs.append(df)
             df.to_csv(os.path.join(trace_dir, fn), index=False)
     df_trace = pd.concat(logs, ignore_index=True)
+    df_trace.dropna(subset=['real time'], inplace=True)
     df_trace.sort_values(['Flight number','real time'], inplace=True)
     df_trace.reset_index(drop=True, inplace=True)
     base_date = df_trace['real time'].dt.date.iloc[0]
