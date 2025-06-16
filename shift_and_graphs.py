@@ -6,6 +6,7 @@ combined_event_analysis.py — Full pipeline: 1) shifted-event summary + per-pix
 from __future__ import annotations
 import os
 import math
+import numpy as np
 from pathlib import Path
 from datetime import datetime, timedelta
 import pandas as pd
@@ -14,7 +15,6 @@ import matplotlib as mpl
 from geopy.distance import geodesic
 import tkinter as tk
 from tkinter import filedialog
-import numpy as np
 
 # ---------------------- STYLE ------------------------------------------
 LIGHT_BLUE = "#73C2FB"
@@ -41,13 +41,17 @@ def _safe_save(fig: plt.Figure, path: Path):
     finally:
         plt.close(fig)
 
-def haversine(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
+def haversine(lat1, lon1, lat2, lon2):
+    """Vectorized haversine distance in meters."""
     R = 6_371_000
-    φ1, φ2 = math.radians(lat1), math.radians(lat2)
-    Δφ = math.radians(lat2 - lat1)
-    Δλ = math.radians(lon2 - lon1)
-    a = math.sin(Δφ/2)**2 + math.cos(φ1)*math.cos(φ2)*math.sin(Δλ/2)**2
-    return 2*R*math.atan2(math.sqrt(a), math.sqrt(1 - a))
+    lat1 = np.radians(lat1)
+    lon1 = np.radians(lon1)
+    lat2 = np.radians(lat2)
+    lon2 = np.radians(lon2)
+    dlat = lat2 - lat1
+    dlon = lon2 - lon1
+    a = np.sin(dlat / 2) ** 2 + np.cos(lat1) * np.cos(lat2) * np.sin(dlon / 2) ** 2
+    return 2 * R * np.arcsin(np.sqrt(a))
 
 def compute_coverage_by_track(coords: pd.Series, total_track: float, max_gap_m: float = 50.0) -> float:
     if coords.empty or total_track <= 0:
