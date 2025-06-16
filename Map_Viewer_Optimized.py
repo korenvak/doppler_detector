@@ -163,7 +163,6 @@ def process_flight_data_optimized(data_loader):
         px = int(ev['Pixel'])
         start = ev['Start time']
         end = ev['End time']
-        snapshot = ev.get('Snapshot', '')
 
         dfx = data_loader.get_pixel_data(px)
         if dfx is None:
@@ -186,7 +185,7 @@ def process_flight_data_optimized(data_loader):
             continue
 
         meta = window.to_dict('records')
-        dict_pixel.setdefault((fl, px), []).append((coords, meta, snapshot))
+        dict_pixel.setdefault((fl, px), []).append((coords, meta))
 
     return dict_pixel
 
@@ -289,6 +288,18 @@ MOVEMENT_COLORS = {
     'cruising': '#95a5a6'
 }
 
+
+def build_popup(px, meta):
+    """Create HTML popup content for a point"""
+    return html.Div([
+        html.H6(f"Pixel {px}"),
+        html.P([
+            f"Time: {meta.get('Time', 'N/A')}", html.Br(),
+            f"Distance: {meta.get('distance_to_sensor', meta.get('dist3D', 'N/A')):.1f}m", html.Br(),
+            f"Movement: {meta.get('pixel_movement_type', 'N/A')}"
+        ], className='small')
+    ])
+
 # ----------------------------
 # 5) Dash App with Optimized Callbacks
 # ----------------------------
@@ -365,7 +376,7 @@ def update_map_optimized(flight, view_mode, selection, display_options):
             key = (flight, px)
             windows = dict_pixel.get(key, [])
             col = pixel_colors.get(px, '#0066CC')
-            for _, (coords, meta, snapshot) in enumerate(windows):
+            for coords, meta in windows:
                 layers.append(dl.Polyline(positions=coords, color=col, weight=4, opacity=0.8))
                 step = max(1, len(coords) // 20)
                 for i in range(0, len(coords), step):
@@ -380,15 +391,16 @@ def update_map_optimized(flight, view_mode, selection, display_options):
                             marker_color = col
                     else:
                         marker_color = col
-                    popup_content = html.Div([
-                        html.H6(f"Pixel {px}"),
-                        html.P([
-                            f"Time: {m.get('Time', 'N/A')}", html.Br(),
-                            f"Distance: {m.get('distance_to_sensor', m.get('dist3D', 'N/A')):.1f}m", html.Br(),
-                            f"Movement: {m.get('pixel_movement_type', 'N/A')}"
-                        ], className="small")
-                    ])
-                    layers.append(dl.CircleMarker(center=[lat, lon], radius=4, color=marker_color, fill=True, fillOpacity=0.8, children=[dl.Popup(popup_content)]))
+                    layers.append(
+                        dl.CircleMarker(
+                            center=[lat, lon],
+                            radius=4,
+                            color=marker_color,
+                            fill=True,
+                            fillOpacity=0.8,
+                            children=[dl.Popup(build_popup(px, m))]
+                        )
+                    )
         for px, (lat, lon, stype, _, _) in sensor_positions.items():
             is_selected = px in pixels
             col = pixel_colors.get(px, '#666666')
@@ -401,7 +413,7 @@ def update_map_optimized(flight, view_mode, selection, display_options):
             for px in pixels_of_type:
                 key = (flight, px)
                 windows = dict_pixel.get(key, [])
-                for _, (coords, meta, _) in enumerate(windows):
+                for coords, _ in windows:
                     layers.append(dl.Polyline(positions=coords, color=col, weight=4, opacity=0.8))
 
     return layers
