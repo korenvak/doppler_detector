@@ -471,8 +471,8 @@ def update_map_optimized(flight, view_mode, selection, display_options, map_styl
                             color=marker_color,
                             fill=True,
                             fillOpacity=0.8,
-                            id=f'mark-{flight}-{px}-{window_idx}-{i}',
-                            key=f'mark-{flight}-{px}-{window_idx}-{i}',
+                            id=f'mark-{flight}-{px}-{w_idx}-{i}',
+                            key=f'mark-{flight}-{px}-{w_idx}-{i}',
                             children=[dl.Popup(build_popup(px, m, snap))]
                         )
                     )
