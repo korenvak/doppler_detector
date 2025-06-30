@@ -33,8 +33,6 @@ from spectrogram_gui.utils.spectrogram_utils import (
     parse_timestamp_from_filename,
 )
 from spectrogram_gui.utils.auto_detector import DopplerDetector
-from spectrogram_gui.utils.detector_2d import DopplerDetector2D
-from spectrogram_gui.gui.detector_params_dialog_2d import Detector2DParamsDialog
 
 # Path to the custom QSS file
 STYLE_SHEET_PATH = os.path.join(
@@ -122,8 +120,6 @@ class MainWindow(QMainWindow):
         # Detector instances
         self.detector = DopplerDetector()
         self.detector.spectrogram_params = self.spectrogram_params
-        self.detector2d = DopplerDetector2D()
-        self.detector2d.spectrogram_params = self.spectrogram_params
 
         # --- Left pane (file list) ---
         left_frame = QFrame()
@@ -193,12 +189,6 @@ class MainWindow(QMainWindow):
         self.auto_detect_btn.setToolTip("Open parameters and run auto-detection")
         self.auto_detect_btn.clicked.connect(self.run_detection)
 
-        # 2D Auto-Detect
-        self.auto_detect_2d_btn = QPushButton("Auto-Detect 2D")
-        self.auto_detect_2d_btn.setIcon(qta.icon('fa5s.crosshairs'))
-        self.auto_detect_2d_btn.setToolTip("Run 2D peak detection")
-        self.auto_detect_2d_btn.clicked.connect(self.run_detection_2d)
-
 
         # Mark Event
         self.mark_event_btn = QPushButton("Mark Event")
@@ -261,7 +251,6 @@ class MainWindow(QMainWindow):
             self.set_csv_btn,
             self.settings_btn,
             self.auto_detect_btn,
-            self.auto_detect_2d_btn,
         ]:
             top_bar.addWidget(w)
 
@@ -482,62 +471,7 @@ class MainWindow(QMainWindow):
         except Exception as e:
             QMessageBox.warning(self, "Auto-Detect Error", str(e))
 
-    def run_detection_2d(self):
-        """Run the 2D peak detector and plot tracks."""
-        if not self.current_file:
-            return
 
-        dlg = Detector2DParamsDialog(self, detector=self.detector2d)
-        if dlg.exec_() != dlg.Accepted:
-            return
-
-        use_filtered = False
-        if self.undo_stack:
-            resp = QMessageBox.question(
-                self,
-                "Auto-Detect",
-                "Filters have been applied. Detect on the filtered signal?",
-                QMessageBox.Yes | QMessageBox.No,
-                QMessageBox.Yes,
-            )
-            use_filtered = resp == QMessageBox.Yes
-
-        try:
-            start_time = datetime.now()
-            if use_filtered:
-                y, sr = self.audio_player.get_waveform_copy(return_sr=True)
-                freqs, times, Sxx, _ = compute_spectrogram(
-                    y, sr, self.current_file, params=self.spectrogram_params
-                )
-            else:
-                y, sr = load_audio_with_filters(self.current_file)
-                freqs, times, Sxx, _ = compute_spectrogram(
-                    y, sr, self.current_file, params=self.spectrogram_params
-                )
-
-            progress = QProgressDialog("Detecting tracks...", "", 0, len(times), self)
-            progress.setWindowModality(Qt.WindowModal)
-            progress.show()
-
-            tracks = self.detector2d.run_detection(Sxx, freqs, times, progress_callback=progress.setValue)
-            progress.close()
-            processed = []
-            for tr in tracks:
-                t_idx = np.asarray([pt[0] for pt in tr], dtype=int)
-                f_idx = np.asarray([pt[1] for pt in tr], dtype=int)
-                processed.append((times[t_idx], freqs[f_idx]))
-
-            self.canvas.clear_auto_tracks()
-            self.canvas.plot_auto_tracks(processed)
-            self.detection_manager.record(self.canvas.auto_tracks_items.copy())
-            self.add_undo_action(("detection", None))
-            duration = (datetime.now() - start_time).total_seconds()
-            self.param_panel.update_stats(len(processed), "2D", duration)
-            self.status_label.setText(
-                f"Auto detection 2D: {len(processed)} tracks found."
-            )
-        except Exception as e:
-            QMessageBox.warning(self, "Auto-Detect Error", str(e))
 
 
     def select_folder(self):
