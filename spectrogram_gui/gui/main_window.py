@@ -9,7 +9,7 @@ from PyQt5.QtWidgets import (
     QFileDialog, QPushButton, QLabel, QListWidget, QListWidgetItem,
     QSplitter, QMessageBox, QMenu, QApplication, QFrame,
     QToolButton, QAction, QGraphicsDropShadowEffect, QShortcut,
-    QProgressDialog
+    QProgressDialog, QDialog
 )
 from PyQt5.QtGui import QKeySequence
 from PyQt5.QtCore import Qt, pyqtSignal, QSize, QEvent
@@ -33,8 +33,7 @@ from spectrogram_gui.utils.spectrogram_utils import (
     parse_timestamp_from_filename,
 )
 from spectrogram_gui.utils.auto_detector import DopplerDetector
-from spectrogram_gui.utils.detector_2d import DopplerDetector2D
-from spectrogram_gui.gui.detector_params_dialog_2d import Detector2DParamsDialog
+from spectrogram_gui.utils.physical_detector import PhysicalDopplerDetector
 
 # Path to the custom QSS file
 STYLE_SHEET_PATH = os.path.join(
@@ -122,8 +121,12 @@ class MainWindow(QMainWindow):
         # Detector instances
         self.detector = DopplerDetector()
         self.detector.spectrogram_params = self.spectrogram_params
-        self.detector2d = DopplerDetector2D()
-        self.detector2d.spectrogram_params = self.spectrogram_params
+        self.physical_detector = PhysicalDopplerDetector(
+            min_bpf_hz=100.0,
+            max_bpf_hz=400.0,
+            min_event_duration_s=8.0,
+            max_event_duration_s=120.0
+        )
 
         # --- Left pane (file list) ---
         left_frame = QFrame()
@@ -193,12 +196,11 @@ class MainWindow(QMainWindow):
         self.auto_detect_btn.setToolTip("Open parameters and run auto-detection")
         self.auto_detect_btn.clicked.connect(self.run_detection)
 
-        # 2D Auto-Detect
-        self.auto_detect_2d_btn = QPushButton("Auto-Detect 2D")
-        self.auto_detect_2d_btn.setIcon(qta.icon('fa5s.crosshairs'))
-        self.auto_detect_2d_btn.setToolTip("Run 2D peak detection")
-        self.auto_detect_2d_btn.clicked.connect(self.run_detection_2d)
-
+        # Physical Auto-Detect
+        self.auto_detect_physical_btn = QPushButton("Physical Detect")
+        self.auto_detect_physical_btn.setIcon(qta.icon('fa5s.plane'))
+        self.auto_detect_physical_btn.setToolTip("Run physics-based Doppler detection")
+        self.auto_detect_physical_btn.clicked.connect(self.run_physical_detection)
 
         # Mark Event
         self.mark_event_btn = QPushButton("Mark Event")
@@ -261,7 +263,7 @@ class MainWindow(QMainWindow):
             self.set_csv_btn,
             self.settings_btn,
             self.auto_detect_btn,
-            self.auto_detect_2d_btn,
+            self.auto_detect_physical_btn,
         ]:
             top_bar.addWidget(w)
 
@@ -482,63 +484,87 @@ class MainWindow(QMainWindow):
         except Exception as e:
             QMessageBox.warning(self, "Auto-Detect Error", str(e))
 
-    def run_detection_2d(self):
-        """Run the 2D peak detector and plot tracks."""
+    def run_physical_detection(self):
+        """Run the physics-based Doppler detector."""
         if not self.current_file:
             return
-
-        dlg = Detector2DParamsDialog(self, detector=self.detector2d)
-        if dlg.exec_() != dlg.Accepted:
+        
+        # Show parameter dialog
+        from spectrogram_gui.gui.physical_detector_params_dialog import PhysicalDetectorParamsDialog
+        dlg = PhysicalDetectorParamsDialog(self, detector=self.physical_detector)
+        if dlg.exec_() != QDialog.Accepted:
             return
-
-        use_filtered = False
-        if self.undo_stack:
-            resp = QMessageBox.question(
-                self,
-                "Auto-Detect",
-                "Filters have been applied. Detect on the filtered signal?",
-                QMessageBox.Yes | QMessageBox.No,
-                QMessageBox.Yes,
-            )
-            use_filtered = resp == QMessageBox.Yes
-
+        
         try:
+            from datetime import datetime
             start_time = datetime.now()
-            if use_filtered:
-                y, sr = self.audio_player.get_waveform_copy(return_sr=True)
-                freqs, times, Sxx, _ = compute_spectrogram(
-                    y, sr, self.current_file, params=self.spectrogram_params
-                )
-            else:
-                y, sr = load_audio_with_filters(self.current_file)
-                freqs, times, Sxx, _ = compute_spectrogram(
-                    y, sr, self.current_file, params=self.spectrogram_params
-                )
-
-            progress = QProgressDialog("Detecting tracks...", "", 0, len(times), self)
+            
+            # Create progress dialog
+            progress = QProgressDialog("Running Physical Doppler Detection...", "Cancel", 0, 100, self)
             progress.setWindowModality(Qt.WindowModal)
+            progress.setMinimumDuration(0)
+            progress.setValue(10)
             progress.show()
-
-            tracks = self.detector2d.run_detection(Sxx, freqs, times, progress_callback=progress.setValue)
-            progress.close()
+            QApplication.processEvents()
+            
+            # Get current spectrogram data
+            if not hasattr(self.canvas, 'Sxx_norm') or self.canvas.Sxx_norm is None:
+                QMessageBox.warning(self, "No Spectrogram", "Please load a file first.")
+                progress.close()
+                return
+            
+            # Use the current filtered spectrogram if available
+            Sxx = self.canvas.Sxx_filt if hasattr(self.canvas, 'Sxx_filt') and self.canvas.Sxx_filt is not None else self.canvas.Sxx_norm
+            freqs = self.canvas.freqs
+            times = self.canvas.times
+            
+            progress.setValue(30)
+            QApplication.processEvents()
+            
+            # Run physical detection
+            events = self.physical_detector.detect_events(Sxx, freqs, times)
+            
+            progress.setValue(80)
+            QApplication.processEvents()
+            
+            # Convert events to track format for display
             processed = []
-            for tr in tracks:
-                t_idx = np.asarray([pt[0] for pt in tr], dtype=int)
-                f_idx = np.asarray([pt[1] for pt in tr], dtype=int)
-                processed.append((times[t_idx], freqs[f_idx]))
-
+            for event in events:
+                for track in event.tracks:
+                    if track:  # Check if track is not empty
+                        track_times = np.array([pt[0] for pt in track])
+                        track_freqs = np.array([pt[1] for pt in track])
+                        processed.append((track_times, track_freqs))
+            
+            progress.setValue(90)
+            
+            # Clear old tracks and plot new ones
             self.canvas.clear_auto_tracks()
             self.canvas.plot_auto_tracks(processed)
             self.detection_manager.record(self.canvas.auto_tracks_items.copy())
             self.add_undo_action(("detection", None))
+            
+            progress.close()
+            
+            # Update statistics
             duration = (datetime.now() - start_time).total_seconds()
-            self.param_panel.update_stats(len(processed), "2D", duration)
-            self.status_label.setText(
-                f"Auto detection 2D: {len(processed)} tracks found."
-            )
+            self.param_panel.update_stats(len(events), "Physical", duration)
+            
+            # Update status with event details
+            if events:
+                event_types = [e.event_type for e in events]
+                confidences = [e.confidence for e in events]
+                avg_confidence = np.mean(confidences) * 100
+                self.status_label.setText(
+                    f"Physical detection: {len(events)} events found (avg confidence: {avg_confidence:.1f}%)"
+                )
+            else:
+                self.status_label.setText("Physical detection: No events found")
+                
         except Exception as e:
-            QMessageBox.warning(self, "Auto-Detect Error", str(e))
-
+            if 'progress' in locals():
+                progress.close()
+            QMessageBox.warning(self, "Physical Detection Error", str(e))
 
     def select_folder(self):
         folder = QFileDialog.getExistingDirectory(self, "Select Folder")
