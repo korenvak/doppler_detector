@@ -2,11 +2,14 @@
 import sys
 import os
 
+# Add the parent directory to the Python path so we can import spectrogram_gui modules
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 from PyQt5.QtWidgets import QApplication
 from PyQt5.QtCore import Qt
 
 # Import the modern main window
-from gui.modern_main_window import ModernMainWindow
+from spectrogram_gui.gui.modern_main_window import ModernMainWindow
 
 # Construct the absolute path to modern theme
 THEME_PATH = os.path.join(
@@ -17,7 +20,7 @@ THEME_PATH = os.path.join(
 
 
 def main():
-    # Enable high DPI support
+    # Enable high DPI support with better font rendering
     QApplication.setAttribute(Qt.AA_EnableHighDpiScaling, True)
     QApplication.setAttribute(Qt.AA_UseHighDpiPixmaps, True)
     
@@ -28,6 +31,12 @@ def main():
     
     # Set application style
     app.setStyle("Fusion")  # Modern base style
+    
+    # Set font for better rendering
+    font = app.font()
+    font.setPointSize(12)  # Increase base font size
+    font.setWeight(400)
+    app.setFont(font)
     
     # Load modern theme
     try:

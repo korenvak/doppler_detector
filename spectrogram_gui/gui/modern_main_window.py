@@ -69,9 +69,16 @@ class AudioProcessingWorker(QRunnable):
         try:
             # Load audio
             self.signals.progress.emit(25)
+            # Extract filter parameters from filters dict
+            hp = self.filters.get('highpass') if self.filters else None
+            lp = self.filters.get('lowpass') if self.filters else None
+            gain_db = self.filters.get('gain', 0) if self.filters else 0
+            
             data, sample_rate = load_audio_with_filters(
                 self.file_path,
-                filters=self.filters
+                hp=hp,
+                lp=lp,
+                gain_db=gain_db
             )
             
             # Parse timestamp
@@ -80,12 +87,18 @@ class AudioProcessingWorker(QRunnable):
             
             # Compute spectrogram
             self.signals.progress.emit(75)
-            freqs, times, Sxx = compute_spectrogram(
-                data, sample_rate,
-                window='hann',
-                nperseg=1024,
-                noverlap=512
+            # Use default parameters for spectrogram computation
+            params = {
+                "window_size": 1024,
+                "overlap": 50,  # 50% overlap
+                "smooth_sigma": 1.5,
+                "median_filter_size": (3, 1)
+            }
+            freqs, times, Sxx_norm, Sxx_filt = compute_spectrogram(
+                data, sample_rate, self.file_path, params
             )
+            # Use the filtered spectrogram for display
+            Sxx = Sxx_filt
             
             # Package results
             result = {
@@ -341,7 +354,7 @@ class ModernMainWindow(QMainWindow):
         
         # Time display
         self.time_label = QLabel("00:00 / 00:00")
-        self.time_label.setStyleSheet("font-family: monospace; font-size: 14px;")
+        self.time_label.setStyleSheet("font-family: monospace; font-size: 16px;")
         layout.addWidget(self.time_label)
         
         # Progress slider
@@ -450,7 +463,7 @@ class ModernMainWindow(QMainWindow):
         filter_layout.addWidget(self.filter_btn)
         
         self.filter_status = QLabel("No filters applied")
-        self.filter_status.setStyleSheet("color: #9CA3AF; font-size: 12px;")
+        self.filter_status.setStyleSheet("color: #9CA3AF; font-size: 14px;")
         filter_layout.addWidget(self.filter_status)
         
         filter_group.setLayout(filter_layout)
@@ -599,7 +612,7 @@ class ModernMainWindow(QMainWindow):
         )
         
         toolbar.addAction(
-            qta.icon('mdi.fit-to-screen', color='#6366F1'),
+            qta.icon('mdi.fullscreen', color='#6366F1'),
             "Fit to Screen",
             self.spectrogram_canvas.zoom_reset
         )
@@ -904,8 +917,21 @@ class ModernMainWindow(QMainWindow):
             # Process file
             try:
                 # Load and process
-                data, sr = load_audio_with_filters(file_path, self.filters)
-                freqs, times, Sxx = compute_spectrogram(data, sr)
+                # Extract filter parameters from filters dict
+                hp = self.filters.get('highpass') if self.filters else None
+                lp = self.filters.get('lowpass') if self.filters else None
+                gain_db = self.filters.get('gain', 0) if self.filters else 0
+                
+                data, sr = load_audio_with_filters(file_path, hp=hp, lp=lp, gain_db=gain_db)
+                # Use default parameters for spectrogram computation
+                params = {
+                    "window_size": 1024,
+                    "overlap": 50,  # 50% overlap
+                    "smooth_sigma": 1.5,
+                    "median_filter_size": (3, 1)
+                }
+                freqs, times, Sxx_norm, Sxx_filt = compute_spectrogram(data, sr, file_path, params)
+                Sxx = Sxx_filt
                 
                 # Save results
                 base_name = os.path.splitext(os.path.basename(file_path))[0]
@@ -1075,7 +1101,7 @@ class ModernMainWindow(QMainWindow):
             
     def open_filter_dialog(self):
         """Open filter configuration dialog"""
-        dialog = CombinedFilterDialog(self.filters, self)
+        dialog = CombinedFilterDialog(self)
         if dialog.exec_():
             self.filters = dialog.get_filters()
             self.update_filter_status()
@@ -1092,19 +1118,25 @@ class ModernMainWindow(QMainWindow):
         if self.filters:
             count = len(self.filters)
             self.filter_status.setText(f"{count} filter{'s' if count != 1 else ''} active")
-            self.filter_status.setStyleSheet("color: #10B981; font-size: 12px;")
+            self.filter_status.setStyleSheet("color: #10B981; font-size: 14px;")
         else:
             self.filter_status.setText("No filters applied")
-            self.filter_status.setStyleSheet("color: #9CA3AF; font-size: 12px;")
+            self.filter_status.setStyleSheet("color: #9CA3AF; font-size: 14px;")
             
     def configure_1d_detector(self):
         """Configure 1D detector"""
-        dialog = DetectorParamsDialog(self)
+        # Create a default detector instance
+        from spectrogram_gui.utils.auto_detector import DopplerDetector
+        detector = DopplerDetector()
+        dialog = DetectorParamsDialog(self, detector=detector)
         dialog.exec_()
         
     def configure_2d_detector(self):
         """Configure 2D detector"""
-        dialog = Detector2DParamsDialog(self)
+        # Create a default detector instance
+        from spectrogram_gui.utils.detector_2d import DopplerDetector2D
+        detector = DopplerDetector2D()
+        dialog = Detector2DParamsDialog(self, detector=detector)
         dialog.exec_()
         
     def run_detection(self):

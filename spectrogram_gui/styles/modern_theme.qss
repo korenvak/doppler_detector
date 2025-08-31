@@ -40,7 +40,7 @@ QWidget {
     background-color: #141824;
     color: #F9FAFB;
     font-family: "Inter", "Segoe UI", -apple-system, BlinkMacSystemFont, sans-serif;
-    font-size: 14px;
+    font-size: 16px;
     font-weight: 400;
 }
 
@@ -56,10 +56,10 @@ QPushButton {
     color: #FFFFFF;
     border: none;
     border-radius: 8px;
-    padding: 10px 20px;
+    padding: 12px 24px;
     font-weight: 500;
-    font-size: 14px;
-    min-height: 36px;
+    font-size: 16px;
+    min-height: 44px;
     text-transform: uppercase;
     letter-spacing: 0.5px;
 }
@@ -131,11 +131,11 @@ QGroupBox::title {
     subcontrol-origin: margin;
     left: 16px;
     top: -8px;
-    padding: 4px 12px;
+    padding: 6px 16px;
     background: #1E2330;
     color: #A78BFA;
     border-radius: 6px;
-    font-size: 13px;
+    font-size: 15px;
     font-weight: 600;
     text-transform: uppercase;
     letter-spacing: 0.5px;
@@ -175,9 +175,9 @@ QLineEdit, QTextEdit, QPlainTextEdit {
     background: #0A0E1A;
     border: 2px solid #374151;
     border-radius: 8px;
-    padding: 10px 12px;
+    padding: 12px 16px;
     color: #F9FAFB;
-    font-size: 14px;
+    font-size: 16px;
     selection-background-color: #6366F1;
     selection-color: #FFFFFF;
 }
@@ -198,9 +198,10 @@ QComboBox {
     background: #1E2330;
     border: 2px solid #374151;
     border-radius: 8px;
-    padding: 8px 12px;
-    min-height: 36px;
+    padding: 10px 16px;
+    min-height: 44px;
     color: #F9FAFB;
+    font-size: 16px;
 }
 
 QComboBox:hover {
@@ -329,12 +330,12 @@ QTableWidget::item:selected {
 QHeaderView::section {
     background: #282E3E;
     color: #A78BFA;
-    padding: 8px;
+    padding: 10px;
     border: none;
     border-bottom: 2px solid #374151;
     font-weight: 600;
     text-transform: uppercase;
-    font-size: 12px;
+    font-size: 14px;
     letter-spacing: 0.5px;
 }
 
@@ -414,8 +415,8 @@ QToolTip {
     color: #F9FAFB;
     border: 1px solid #374151;
     border-radius: 6px;
-    padding: 8px 12px;
-    font-size: 13px;
+    padding: 10px 16px;
+    font-size: 15px;
 }
 
 /* --- 14. Modern Splitters -------------------------------------- */
@@ -439,27 +440,27 @@ QSplitter::handle:vertical {
 /* --- 15. Special Components ------------------------------------ */
 /* File list heading */
 QLabel#modernHeading {
-    font-size: 18px;
+    font-size: 22px;
     font-weight: 700;
     color: #F9FAFB;
-    padding: 8px 0;
+    padding: 10px 0;
     letter-spacing: -0.5px;
 }
 
 QLabel#modernSubheading {
-    font-size: 13px;
+    font-size: 16px;
     font-weight: 500;
     color: #9CA3AF;
-    padding: 4px 0;
+    padding: 6px 0;
 }
 
 /* Status labels */
 QLabel#statusLabel {
     background: rgba(99, 102, 241, 0.1);
     color: #818CF8;
-    padding: 4px 12px;
+    padding: 6px 16px;
     border-radius: 12px;
-    font-size: 12px;
+    font-size: 14px;
     font-weight: 600;
 }
 

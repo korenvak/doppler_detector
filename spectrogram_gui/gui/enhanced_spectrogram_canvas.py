@@ -206,7 +206,7 @@ class EnhancedSpectrogramCanvas(QWidget):
         zoom_layout.addWidget(self.zoom_out_btn)
         
         self.zoom_reset_btn = QToolButton()
-        self.zoom_reset_btn.setIcon(qta.icon('mdi.fit-to-screen', color='#F9FAFB'))
+        self.zoom_reset_btn.setIcon(qta.icon('mdi.fullscreen', color='#F9FAFB'))
         self.zoom_reset_btn.setToolTip("Reset Zoom")
         self.zoom_reset_btn.clicked.connect(self.zoom_reset)
         zoom_layout.addWidget(self.zoom_reset_btn)
@@ -299,7 +299,7 @@ class EnhancedSpectrogramCanvas(QWidget):
         
         # Info label
         self.info_label = QLabel("")
-        self.info_label.setStyleSheet("color: #9CA3AF; font-size: 12px;")
+        self.info_label.setStyleSheet("color: #9CA3AF; font-size: 14px;")
         layout.addWidget(self.info_label)
         
         return toolbar

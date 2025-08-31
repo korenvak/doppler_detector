@@ -97,7 +97,7 @@ class ModernAnnotationDialog(QDialog):
         time_layout = QVBoxLayout(time_frame)
         
         time_label = QLabel("Time Range")
-        time_label.setStyleSheet("font-size: 14px; font-weight: 600; color: #A78BFA;")
+        time_label.setStyleSheet("font-size: 16px; font-weight: 600; color: #A78BFA;")
         time_layout.addWidget(time_label)
         
         time_inputs = QHBoxLayout()

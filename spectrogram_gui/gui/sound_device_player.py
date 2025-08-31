@@ -18,6 +18,8 @@ class SoundDevicePlayer(QWidget):
 
     prevRequested = pyqtSignal()
     nextRequested = pyqtSignal()
+    position_changed = pyqtSignal(int)  # Emits position in milliseconds
+    playback_finished = pyqtSignal()
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -100,7 +102,9 @@ class SoundDevicePlayer(QWidget):
             self.stream.stop()
             self.stream.close()
             self.stream = None
-        self.playing = False
+        if self.playing:
+            self.playing = False
+            self.playback_finished.emit()
 
     def seek(self, ms):
         """
@@ -134,6 +138,8 @@ class SoundDevicePlayer(QWidget):
                     mode='constant'
                 )
                 self.playing = False
+                # Emit playback finished signal
+                self.playback_finished.emit()
                 raise sd.CallbackStop()
 
             if self.channels == 1:
@@ -141,6 +147,9 @@ class SoundDevicePlayer(QWidget):
 
             outdata[:] = chunk
             self.position += int(1000 * frames / self.sample_rate)
+
+            # Emit position changed signal
+            self.position_changed.emit(self.position)
 
             if self.position_callback:
                 self.position_callback(self.position)
@@ -172,3 +181,34 @@ class SoundDevicePlayer(QWidget):
         if self.playing:
             self.stop()
             self.play()
+            
+    def set_audio(self, data, sample_rate):
+        """
+        Set audio data and sample rate for playback.
+        """
+        self.data = data.astype(np.float32)
+        self.sample_rate = sample_rate
+        self.channels = 1 if self.data.ndim == 1 else self.data.shape[1]
+        self.position = 0
+        self.start_time = time.time()
+        
+    def set_speed(self, speed):
+        """
+        Set playback speed (not implemented in this version).
+        """
+        # TODO: Implement speed control
+        pass
+        
+    def set_volume(self, volume):
+        """
+        Set playback volume (not implemented in this version).
+        """
+        # TODO: Implement volume control
+        pass
+        
+    def pause(self):
+        """
+        Pause playback.
+        """
+        if self.playing:
+            self.stop()
