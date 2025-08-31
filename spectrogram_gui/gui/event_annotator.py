@@ -210,3 +210,83 @@ class EventAnnotator:
                     self.df.to_csv(self.csv_path, index=False)
                 except Exception:
                     pass
+    
+    def count(self):
+        """Return the number of annotations recorded so far."""
+        return len(self.df)
+    
+    def export_csv(self, filepath=None):
+        """
+        Export annotations to CSV file.
+        """
+        if filepath is None:
+            filepath = self.csv_path
+        
+        if not filepath:
+            filepath, _ = QFileDialog.getSaveFileName(
+                None, "Save Annotations CSV", "", "CSV Files (*.csv)"
+            )
+            if not filepath:
+                return False
+        
+        try:
+            csv_dir = os.path.dirname(filepath)
+            if csv_dir:
+                os.makedirs(csv_dir, exist_ok=True)
+            
+            self.df.to_csv(filepath, index=False)
+            print(f"[EventAnnotator] Exported {len(self.df)} annotations to {filepath}")
+            return True
+        except Exception as e:
+            print(f"[EventAnnotator] Export error: {e}")
+            QMessageBox.critical(None, "Export Error", f"Failed to export CSV: {e}")
+            return False
+    
+    def import_csv(self, filepath=None):
+        """
+        Import annotations from CSV file.
+        """
+        if filepath is None:
+            filepath, _ = QFileDialog.getOpenFileName(
+                None, "Import Annotations CSV", "", "CSV Files (*.csv)"
+            )
+            if not filepath:
+                return False
+        
+        try:
+            imported_df = pd.read_csv(filepath)
+            
+            # Validate columns
+            required_cols = ["Start", "End", "Site", "Pixel", "Type"]
+            if not all(col in imported_df.columns for col in required_cols):
+                QMessageBox.warning(
+                    None, "Invalid CSV", 
+                    f"CSV must contain columns: {', '.join(required_cols)}"
+                )
+                return False
+            
+            # Merge or replace
+            reply = QMessageBox.question(
+                None, "Import Mode",
+                "Replace existing annotations or merge with them?",
+                QMessageBox.Yes | QMessageBox.No | QMessageBox.Cancel
+            )
+            
+            if reply == QMessageBox.Cancel:
+                return False
+            elif reply == QMessageBox.Yes:  # Replace
+                self.df = imported_df
+                print(f"[EventAnnotator] Replaced with {len(imported_df)} imported annotations")
+            else:  # Merge
+                self.df = pd.concat([self.df, imported_df], ignore_index=True)
+                print(f"[EventAnnotator] Merged {len(imported_df)} annotations, total: {len(self.df)}")
+            
+            # Save to current CSV path if set
+            if self.csv_path:
+                self.df.to_csv(self.csv_path, index=False)
+            
+            return True
+        except Exception as e:
+            print(f"[EventAnnotator] Import error: {e}")
+            QMessageBox.critical(None, "Import Error", f"Failed to import CSV: {e}")
+            return False

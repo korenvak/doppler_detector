@@ -13,30 +13,69 @@ from spectrogram_gui.gui.range_selector import RangeSelector
 
 class AxisViewBox(pg.ViewBox):
     """
-    Custom ViewBox that only zooms/pans horizontally except when Ctrl is held.
-    When Ctrl is held, zoom/pan vertically only. Likewise for Shift → vertical pan.
+    Enhanced ViewBox with improved zoom/pan controls:
+    - Default: Horizontal zoom/pan only
+    - Ctrl+Wheel: Vertical zoom
+    - Shift+Drag: Vertical pan
+    - Alt+Wheel: Zoom both axes
+    - Right-click drag: Box zoom
     """
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.setMouseEnabled(x=True, y=False)
+        self.setMenuEnabled(True)  # Enable right-click menu
+        self.setAspectLocked(False)
+        
+        # Add zoom limits
+        self.setLimits(xMin=None, xMax=None, yMin=0, yMax=None,
+                      minXRange=0.01, maxXRange=None,
+                      minYRange=10, maxYRange=None)
 
     def wheelEvent(self, ev, axis=None):
         modifiers = ev.modifiers()
-        if modifiers & Qt.ControlModifier:
-            self.setMouseEnabled(x=False, y=True)
-        else:
+        
+        # Get zoom factor
+        delta = ev.angleDelta().y()
+        scale_factor = 1.02 if delta > 0 else 0.98
+        
+        if modifiers & Qt.AltModifier:
+            # Alt+Wheel: Zoom both axes
+            self.setMouseEnabled(x=True, y=True)
+            super().wheelEvent(ev, axis)
             self.setMouseEnabled(x=True, y=False)
-        super().wheelEvent(ev, axis)
-        self.setMouseEnabled(x=True, y=False)
+        elif modifiers & Qt.ControlModifier:
+            # Ctrl+Wheel: Vertical zoom only
+            self.setMouseEnabled(x=False, y=True)
+            super().wheelEvent(ev, axis)
+            self.setMouseEnabled(x=True, y=False)
+        else:
+            # Default: Horizontal zoom only
+            self.setMouseEnabled(x=True, y=False)
+            super().wheelEvent(ev, axis)
+        
+        ev.accept()
 
     def mouseDragEvent(self, ev, axis=None):
         modifiers = ev.modifiers()
-        if modifiers & Qt.ShiftModifier:
+        
+        if ev.button() == Qt.RightButton:
+            # Right-click drag: Box zoom
+            ev.ignore()  # Let the default box zoom handle it
+        elif modifiers & Qt.ShiftModifier:
+            # Shift+Drag: Vertical pan
             self.setMouseEnabled(x=False, y=True)
-        else:
+            super().mouseDragEvent(ev, axis)
             self.setMouseEnabled(x=True, y=False)
-        super().mouseDragEvent(ev, axis)
-        self.setMouseEnabled(x=True, y=False)
+        else:
+            # Default: Horizontal pan
+            self.setMouseEnabled(x=True, y=False)
+            super().mouseDragEvent(ev, axis)
+    
+    def mouseDoubleClickEvent(self, ev):
+        """Double-click to reset zoom."""
+        if ev.button() == Qt.LeftButton:
+            self.autoRange()
+            ev.accept()
 
 
 class TimeAxisItem(pg.AxisItem):
@@ -90,9 +129,16 @@ class SpectrogramCanvas(QWidget):
         self.axis = TimeAxisItem(orientation="bottom")
         self.vb = AxisViewBox()
         self.plot = self.view.addPlot(viewBox=self.vb, axisItems={"bottom": self.axis})
-        self.plot.showGrid(x=True, y=True)
+        self.plot.showGrid(x=True, y=True, alpha=0.3)
         self.plot.setLabel('left', 'Frequency', units='Hz')
         self.plot.setLabel('bottom', 'Time')
+        
+        # Add zoom controls info to plot
+        self.plot.setTitle(
+            "Zoom: Wheel=H, Ctrl+Wheel=V, Alt+Wheel=Both | "
+            "Pan: Drag=H, Shift+Drag=V | Double-click=Reset",
+            size='8pt', color='#888'
+        )
 
         # ImageItem to hold Sxx
         self.img_item = pg.ImageItem()
@@ -114,7 +160,12 @@ class SpectrogramCanvas(QWidget):
 
         # Persist last view range for zoom persistence
         self.view_state = None
+        self.zoom_history = []  # Stack for zoom history
+        self.max_zoom_history = 20
         self.vb.sigRangeChanged.connect(self._store_view_state)
+        
+        # Add keyboard shortcuts for zoom
+        self.installEventFilter(self)
 
         # Range selection
         self.range_selector = RangeSelector(self.plot)
@@ -139,18 +190,114 @@ class SpectrogramCanvas(QWidget):
         self.auto_tracks_items = []
 
     def _store_view_state(self, *_, **__):
+        """Store current view state for zoom history."""
         try:
-            self.view_state = self.vb.viewRange()
+            new_state = self.vb.viewRange()
+            if new_state != self.view_state:
+                self.view_state = new_state
+                
+                # Add to zoom history
+                self.zoom_history.append(new_state)
+                if len(self.zoom_history) > self.max_zoom_history:
+                    self.zoom_history.pop(0)
         except Exception:
             self.view_state = None
+    
+    def zoom_to_selection(self):
+        """Zoom to the currently selected range."""
+        if self.selected_range:
+            t_start, t_end = self.selected_range
+            
+            # Get current Y range
+            current_range = self.vb.viewRange()
+            y_min, y_max = current_range[1] if current_range else (0, self.freqs[-1] if self.freqs is not None else 1000)
+            
+            # Set new range with some padding
+            padding = (t_end - t_start) * 0.05
+            self.vb.setRange(
+                xRange=[t_start - padding, t_end + padding],
+                yRange=[y_min, y_max],
+                padding=0
+            )
+    
+    def zoom_in(self, factor=0.5):
+        """Zoom in by a factor."""
+        current_range = self.vb.viewRange()
+        if current_range:
+            x_range = current_range[0]
+            x_center = (x_range[0] + x_range[1]) / 2
+            x_width = (x_range[1] - x_range[0]) * factor
+            
+            self.vb.setXRange(
+                x_center - x_width/2,
+                x_center + x_width/2,
+                padding=0
+            )
+    
+    def zoom_out(self, factor=2.0):
+        """Zoom out by a factor."""
+        current_range = self.vb.viewRange()
+        if current_range:
+            x_range = current_range[0]
+            x_center = (x_range[0] + x_range[1]) / 2
+            x_width = (x_range[1] - x_range[0]) * factor
+            
+            # Limit to data bounds
+            if self.times is not None:
+                x_min = max(self.times[0], x_center - x_width/2)
+                x_max = min(self.times[-1], x_center + x_width/2)
+                self.vb.setXRange(x_min, x_max, padding=0)
+    
+    def reset_zoom(self):
+        """Reset zoom to show all data."""
+        self.vb.autoRange()
+    
+    def previous_zoom(self):
+        """Go back to previous zoom level."""
+        if len(self.zoom_history) > 1:
+            self.zoom_history.pop()  # Remove current
+            prev_state = self.zoom_history[-1]
+            self.vb.setRange(xRange=prev_state[0], yRange=prev_state[1], padding=0)
+    
+    def eventFilter(self, obj, event):
+        """Handle keyboard shortcuts for zoom."""
+        if event.type() == event.KeyPress:
+            key = event.key()
+            modifiers = event.modifiers()
+            
+            if key == Qt.Key_Plus or key == Qt.Key_Equal:
+                if modifiers & Qt.ControlModifier:
+                    self.zoom_in(0.7)
+                else:
+                    self.zoom_in(0.5)
+                return True
+            elif key == Qt.Key_Minus:
+                if modifiers & Qt.ControlModifier:
+                    self.zoom_out(1.5)
+                else:
+                    self.zoom_out(2.0)
+                return True
+            elif key == Qt.Key_0 and modifiers & Qt.ControlModifier:
+                self.reset_zoom()
+                return True
+            elif key == Qt.Key_Z and modifiers & Qt.ControlModifier and modifiers & Qt.ShiftModifier:
+                self.previous_zoom()
+                return True
+            elif key == Qt.Key_S and not modifiers:
+                self.zoom_to_selection()
+                return True
+        
+        return super().eventFilter(obj, event)
 
     def clear_auto_tracks(self):
-        print("[Canvas] clear_auto_tracks()")
-        for item in self.auto_tracks_items:
-            try:
-                self.plot.removeItem(item)
-            except:
-                pass
+        """Clear all auto-detected track visualizations."""
+        if self.auto_tracks_items:
+            print(f"[Canvas] Clearing {len(self.auto_tracks_items)} auto-track items")
+            for item in self.auto_tracks_items:
+                try:
+                    self.plot.removeItem(item)
+                except Exception as e:
+                    print(f"[Canvas] Error removing item: {e}")
         self.auto_tracks_items = []
 
     def remove_items(self, items):
@@ -165,16 +312,52 @@ class SpectrogramCanvas(QWidget):
         Overlay automatic detection tracks on the spectrogram.
         Each track is provided as a tuple of (times_array, freqs_array).
         """
-        for t_arr, f_arr in tracks:
+        print(f"[Canvas] Plotting {len(tracks)} auto-detected tracks")
+        
+        # Clear any existing tracks first
+        self.clear_auto_tracks()
+        
+        # Define bright colors for better visibility
+        colors = [
+            (255, 0, 0),     # Red
+            (0, 255, 0),     # Green
+            (0, 100, 255),   # Blue
+            (255, 255, 0),   # Yellow
+            (255, 0, 255),   # Magenta
+            (0, 255, 255),   # Cyan
+            (255, 128, 0),   # Orange
+            (128, 0, 255),   # Purple
+        ]
+        
+        for i, (t_arr, f_arr) in enumerate(tracks):
             xs = np.asarray(t_arr, dtype=float)
             ys = np.asarray(f_arr, dtype=float)
+            
+            if len(xs) == 0 or len(ys) == 0:
+                print(f"[Canvas] Skipping empty track {i}")
+                continue
+            
+            # Use different colors for different tracks
+            color = colors[i % len(colors)]
+            
+            # Create a more visible curve with markers
             curve = pg.PlotDataItem(
                 xs, ys,
-                pen=pg.mkPen(width=1.5, color=(255, 255, 0)),
-                antialias=True
+                pen=pg.mkPen(width=2.5, color=color),
+                antialias=True,
+                symbol='o',
+                symbolSize=4,
+                symbolBrush=pg.mkBrush(color),
+                symbolPen=None
             )
+            
+            # Make sure it's on top of the spectrogram
+            curve.setZValue(10)
+            
             self.plot.addItem(curve)
             self.auto_tracks_items.append(curve)
+            
+            print(f"[Canvas] Track {i}: {len(xs)} points, time [{xs.min():.2f}, {xs.max():.2f}]s, freq [{ys.min():.2f}, {ys.max():.2f}]Hz")
 
     def plot_spectrogram(self, freqs, times, Sxx_raw, start_time, maintain_view=False):
         """
