@@ -3,48 +3,45 @@ import sys
 import os
 
 from PyQt5.QtWidgets import QApplication
+from PyQt5.QtCore import Qt
 
-# If you’re using qdarkstyle, import it. Otherwise you can omit these two lines.
-import qdarkstyle
+# Import the modern main window
+from gui.modern_main_window import ModernMainWindow
 
-# Adjust the import path if necessary—this assumes that `main.py`
-# lives in `personal/Koren/spectrogram_gui/` alongside folders `gui/`, `styles/`, etc.
-from gui.main_window import MainWindow
-
-# Construct the absolute path to style.qss
-STYLE_SHEET_PATH = os.path.join(
-    os.path.dirname(__file__),    # personal/Koren/spectrogram_gui/
+# Construct the absolute path to modern theme
+THEME_PATH = os.path.join(
+    os.path.dirname(__file__),
     "styles",
-    "style.qss"
+    "modern_theme.qss"
 )
 
 
 def main():
-    # 1) Create the QApplication
+    # Enable high DPI support
+    QApplication.setAttribute(Qt.AA_EnableHighDpiScaling, True)
+    QApplication.setAttribute(Qt.AA_UseHighDpiPixmaps, True)
+    
+    # Create the QApplication
     app = QApplication(sys.argv)
-
-    # 2) (Optional) Load qdarkstyle’s base dark theme
-    # If you don’t want qdarkstyle, comment out these two lines and
-    # change app.setStyleSheet(...) below to app.setStyleSheet(custom)
-    dark = qdarkstyle.load_stylesheet_pyqt5()
-
-    # 3) Load our custom QSS (style.qss)
+    app.setApplicationName("Spectrogram Analyzer")
+    app.setOrganizationName("Modern Audio Tools")
+    
+    # Set application style
+    app.setStyle("Fusion")  # Modern base style
+    
+    # Load modern theme
     try:
-        with open(STYLE_SHEET_PATH, 'r') as f:
-            custom = f.read()
-    except Exception:
-        custom = ""
-
-    # 4) Combine qdarkstyle + our custom QSS
-    # If you prefer to use ONLY your own style.qss, replace the next line with:
-    #     app.setStyleSheet(custom)
-    app.setStyleSheet(dark + "\n" + custom)
-
-    # 5) Instantiate and show the main window
-    window = MainWindow()
+        with open(THEME_PATH, 'r') as f:
+            theme = f.read()
+            app.setStyleSheet(theme)
+    except Exception as e:
+        print(f"Warning: Could not load theme: {e}")
+    
+    # Create and show the modern main window
+    window = ModernMainWindow()
     window.show()
-
-    # 6) Enter the Qt main event loop
+    
+    # Enter the Qt main event loop
     sys.exit(app.exec_())
 
 

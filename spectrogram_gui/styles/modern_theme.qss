@@ -1,0 +1,551 @@
+/* ================================================================
+   Modern Material Design 3 Inspired Theme
+   ---------------------------------------------------------------
+   Color palette (Dark Mode)
+     surface-0    : #0A0E1A      /* Deepest background */
+     surface-1    : #141824      /* Main background */
+     surface-2    : #1E2330      /* Card background */
+     surface-3    : #282E3E      /* Elevated surface */
+     surface-4    : #323A4C      /* Higher elevation */
+     
+     primary      : #6366F1      /* Indigo primary */
+     primary-hover: #818CF8      /* Lighter indigo */
+     secondary    : #A78BFA      /* Purple accent */
+     tertiary     : #34D399      /* Emerald green */
+     
+     error        : #EF4444      /* Red */
+     warning      : #F59E0B      /* Amber */
+     success      : #10B981      /* Green */
+     info         : #3B82F6      /* Blue */
+     
+     text-primary : #F9FAFB      /* Main text */
+     text-secondary: #D1D5DB     /* Secondary text */
+     text-disabled: #6B7280      /* Disabled text */
+     
+     border       : #374151      /* Default border */
+     border-focus : #6366F1      /* Focus border */
+     
+   Fonts
+     Primary: "Inter", "Segoe UI", -apple-system, sans-serif
+   --------------------------------------------------------------- */
+
+/* --- 1. Global Reset & Base Styles ---------------------------- */
+* {
+    margin: 0;
+    padding: 0;
+    border: 0;
+}
+
+QWidget {
+    background-color: #141824;
+    color: #F9FAFB;
+    font-family: "Inter", "Segoe UI", -apple-system, BlinkMacSystemFont, sans-serif;
+    font-size: 14px;
+    font-weight: 400;
+}
+
+QMainWindow {
+    background: qlineargradient(x1:0, y1:0, x2:1, y2:1,
+                               stop:0 #0A0E1A, stop:1 #141824);
+}
+
+/* --- 2. Modern Buttons with Ripple Effect Simulation ---------- */
+QPushButton {
+    background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                               stop:0 #6366F1, stop:1 #5558E3);
+    color: #FFFFFF;
+    border: none;
+    border-radius: 8px;
+    padding: 10px 20px;
+    font-weight: 500;
+    font-size: 14px;
+    min-height: 36px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+QPushButton:hover {
+    background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                               stop:0 #818CF8, stop:1 #6366F1);
+    box-shadow: 0 4px 12px rgba(99, 102, 241, 0.3);
+}
+
+QPushButton:pressed {
+    background: #4F46E5;
+    padding-top: 11px;
+    padding-bottom: 9px;
+}
+
+QPushButton:disabled {
+    background: #374151;
+    color: #6B7280;
+}
+
+/* Icon Buttons */
+QToolButton {
+    background: transparent;
+    border: none;
+    border-radius: 20px;
+    padding: 8px;
+    margin: 2px;
+}
+
+QToolButton:hover {
+    background: rgba(99, 102, 241, 0.1);
+}
+
+QToolButton:pressed {
+    background: rgba(99, 102, 241, 0.2);
+}
+
+QToolButton:checked {
+    background: #6366F1;
+    color: #FFFFFF;
+}
+
+/* --- 3. Modern Cards & Panels --------------------------------- */
+QFrame#modernCard {
+    background: #1E2330;
+    border-radius: 12px;
+    border: 1px solid rgba(55, 65, 81, 0.5);
+    padding: 16px;
+}
+
+QFrame#glassCard {
+    background: rgba(30, 35, 48, 0.8);
+    border-radius: 16px;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    backdrop-filter: blur(10px);
+}
+
+QGroupBox {
+    background: #1E2330;
+    border: 1px solid #374151;
+    border-radius: 12px;
+    margin-top: 24px;
+    padding-top: 16px;
+    font-weight: 500;
+}
+
+QGroupBox::title {
+    subcontrol-origin: margin;
+    left: 16px;
+    top: -8px;
+    padding: 4px 12px;
+    background: #1E2330;
+    color: #A78BFA;
+    border-radius: 6px;
+    font-size: 13px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+/* --- 4. Modern Lists with Hover Effects ----------------------- */
+QListWidget {
+    background: #1E2330;
+    border: 1px solid #374151;
+    border-radius: 8px;
+    padding: 8px;
+    outline: none;
+}
+
+QListWidget::item {
+    background: transparent;
+    border-radius: 6px;
+    padding: 12px;
+    margin: 2px 0;
+    border: 1px solid transparent;
+}
+
+QListWidget::item:hover {
+    background: rgba(99, 102, 241, 0.1);
+    border: 1px solid rgba(99, 102, 241, 0.3);
+}
+
+QListWidget::item:selected {
+    background: qlineargradient(x1:0, y1:0, x2:1, y2:0,
+                               stop:0 #6366F1, stop:1 #818CF8);
+    color: #FFFFFF;
+    border: none;
+}
+
+/* --- 5. Modern Input Fields ------------------------------------ */
+QLineEdit, QTextEdit, QPlainTextEdit {
+    background: #0A0E1A;
+    border: 2px solid #374151;
+    border-radius: 8px;
+    padding: 10px 12px;
+    color: #F9FAFB;
+    font-size: 14px;
+    selection-background-color: #6366F1;
+    selection-color: #FFFFFF;
+}
+
+QLineEdit:focus, QTextEdit:focus, QPlainTextEdit:focus {
+    border: 2px solid #6366F1;
+    background: #141824;
+}
+
+QLineEdit:disabled, QTextEdit:disabled {
+    background: #1E2330;
+    color: #6B7280;
+    border: 2px solid #282E3E;
+}
+
+/* --- 6. Modern ComboBox ---------------------------------------- */
+QComboBox {
+    background: #1E2330;
+    border: 2px solid #374151;
+    border-radius: 8px;
+    padding: 8px 12px;
+    min-height: 36px;
+    color: #F9FAFB;
+}
+
+QComboBox:hover {
+    border: 2px solid #6366F1;
+}
+
+QComboBox:focus {
+    border: 2px solid #818CF8;
+    background: #282E3E;
+}
+
+QComboBox::drop-down {
+    subcontrol-origin: padding;
+    subcontrol-position: center right;
+    width: 30px;
+    border: none;
+}
+
+QComboBox::down-arrow {
+    image: none;
+    width: 0;
+    height: 0;
+    border-left: 5px solid transparent;
+    border-right: 5px solid transparent;
+    border-top: 5px solid #D1D5DB;
+}
+
+QComboBox QAbstractItemView {
+    background: #1E2330;
+    border: 1px solid #374151;
+    border-radius: 8px;
+    selection-background-color: #6366F1;
+    padding: 4px;
+}
+
+/* --- 7. Modern Sliders ----------------------------------------- */
+QSlider {
+    min-height: 30px;
+}
+
+QSlider::groove:horizontal {
+    height: 4px;
+    background: #374151;
+    border-radius: 2px;
+}
+
+QSlider::handle:horizontal {
+    background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                               stop:0 #818CF8, stop:1 #6366F1);
+    border: 2px solid #FFFFFF;
+    width: 20px;
+    height: 20px;
+    margin: -8px 0;
+    border-radius: 10px;
+}
+
+QSlider::handle:horizontal:hover {
+    background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                               stop:0 #A78BFA, stop:1 #818CF8);
+    width: 24px;
+    height: 24px;
+    margin: -10px 0;
+    border-radius: 12px;
+}
+
+QSlider::sub-page:horizontal {
+    background: qlineargradient(x1:0, y1:0, x2:1, y2:0,
+                               stop:0 #6366F1, stop:1 #818CF8);
+    border-radius: 2px;
+}
+
+/* --- 8. Modern ScrollBars -------------------------------------- */
+QScrollBar:vertical {
+    background: #141824;
+    width: 12px;
+    border-radius: 6px;
+}
+
+QScrollBar::handle:vertical {
+    background: #374151;
+    border-radius: 6px;
+    min-height: 30px;
+}
+
+QScrollBar::handle:vertical:hover {
+    background: #4B5563;
+}
+
+QScrollBar::add-line:vertical,
+QScrollBar::sub-line:vertical {
+    height: 0;
+}
+
+QScrollBar:horizontal {
+    background: #141824;
+    height: 12px;
+    border-radius: 6px;
+}
+
+QScrollBar::handle:horizontal {
+    background: #374151;
+    border-radius: 6px;
+    min-width: 30px;
+}
+
+QScrollBar::handle:horizontal:hover {
+    background: #4B5563;
+}
+
+/* --- 9. Modern Tables ------------------------------------------ */
+QTableView, QTableWidget {
+    background: #1E2330;
+    alternate-background-color: #282E3E;
+    gridline-color: #374151;
+    border: 1px solid #374151;
+    border-radius: 8px;
+    padding: 4px;
+}
+
+QTableView::item:selected,
+QTableWidget::item:selected {
+    background: #6366F1;
+    color: #FFFFFF;
+}
+
+QHeaderView::section {
+    background: #282E3E;
+    color: #A78BFA;
+    padding: 8px;
+    border: none;
+    border-bottom: 2px solid #374151;
+    font-weight: 600;
+    text-transform: uppercase;
+    font-size: 12px;
+    letter-spacing: 0.5px;
+}
+
+/* --- 10. Modern Menus ------------------------------------------ */
+QMenu {
+    background: #1E2330;
+    border: 1px solid #374151;
+    border-radius: 8px;
+    padding: 8px 0;
+}
+
+QMenu::item {
+    padding: 10px 24px;
+    color: #F9FAFB;
+    border-radius: 4px;
+    margin: 0 8px;
+}
+
+QMenu::item:selected {
+    background: rgba(99, 102, 241, 0.2);
+    color: #818CF8;
+}
+
+QMenu::separator {
+    height: 1px;
+    background: #374151;
+    margin: 8px 16px;
+}
+
+/* --- 11. Modern Tab Widget ------------------------------------- */
+QTabWidget::pane {
+    background: #1E2330;
+    border: 1px solid #374151;
+    border-radius: 8px;
+    padding: 8px;
+}
+
+QTabBar::tab {
+    background: transparent;
+    color: #D1D5DB;
+    padding: 10px 20px;
+    margin-right: 4px;
+    border-top-left-radius: 8px;
+    border-top-right-radius: 8px;
+}
+
+QTabBar::tab:selected {
+    background: #1E2330;
+    color: #F9FAFB;
+    border-bottom: 3px solid #6366F1;
+}
+
+QTabBar::tab:hover {
+    background: rgba(99, 102, 241, 0.1);
+    color: #F9FAFB;
+}
+
+/* --- 12. Modern Progress Bars ---------------------------------- */
+QProgressBar {
+    background: #374151;
+    border-radius: 12px;
+    height: 24px;
+    text-align: center;
+    color: #F9FAFB;
+    font-weight: 500;
+}
+
+QProgressBar::chunk {
+    background: qlineargradient(x1:0, y1:0, x2:1, y2:0,
+                               stop:0 #6366F1, stop:0.5 #818CF8, stop:1 #A78BFA);
+    border-radius: 12px;
+}
+
+/* --- 13. Modern Tooltips --------------------------------------- */
+QToolTip {
+    background: #282E3E;
+    color: #F9FAFB;
+    border: 1px solid #374151;
+    border-radius: 6px;
+    padding: 8px 12px;
+    font-size: 13px;
+}
+
+/* --- 14. Modern Splitters -------------------------------------- */
+QSplitter::handle {
+    background: #374151;
+    border-radius: 2px;
+}
+
+QSplitter::handle:hover {
+    background: #6366F1;
+}
+
+QSplitter::handle:horizontal {
+    width: 4px;
+}
+
+QSplitter::handle:vertical {
+    height: 4px;
+}
+
+/* --- 15. Special Components ------------------------------------ */
+/* File list heading */
+QLabel#modernHeading {
+    font-size: 18px;
+    font-weight: 700;
+    color: #F9FAFB;
+    padding: 8px 0;
+    letter-spacing: -0.5px;
+}
+
+QLabel#modernSubheading {
+    font-size: 13px;
+    font-weight: 500;
+    color: #9CA3AF;
+    padding: 4px 0;
+}
+
+/* Status labels */
+QLabel#statusLabel {
+    background: rgba(99, 102, 241, 0.1);
+    color: #818CF8;
+    padding: 4px 12px;
+    border-radius: 12px;
+    font-size: 12px;
+    font-weight: 600;
+}
+
+/* Accent buttons */
+QPushButton#accentButton {
+    background: qlineargradient(x1:0, y1:0, x2:1, y2:0,
+                               stop:0 #A78BFA, stop:1 #6366F1);
+    font-weight: 600;
+}
+
+QPushButton#successButton {
+    background: qlineargradient(x1:0, y1:0, x2:1, y2:0,
+                               stop:0 #34D399, stop:1 #10B981);
+}
+
+QPushButton#dangerButton {
+    background: qlineargradient(x1:0, y1:0, x2:1, y2:0,
+                               stop:0 #F87171, stop:1 #EF4444);
+}
+
+/* Modern checkbox */
+QCheckBox {
+    spacing: 8px;
+    color: #F9FAFB;
+}
+
+QCheckBox::indicator {
+    width: 20px;
+    height: 20px;
+    border-radius: 4px;
+    border: 2px solid #374151;
+    background: #0A0E1A;
+}
+
+QCheckBox::indicator:checked {
+    background: #6366F1;
+    border: 2px solid #6366F1;
+}
+
+QCheckBox::indicator:hover {
+    border: 2px solid #818CF8;
+}
+
+/* Modern radio button */
+QRadioButton {
+    spacing: 8px;
+    color: #F9FAFB;
+}
+
+QRadioButton::indicator {
+    width: 20px;
+    height: 20px;
+    border-radius: 10px;
+    border: 2px solid #374151;
+    background: #0A0E1A;
+}
+
+QRadioButton::indicator:checked {
+    background: #6366F1;
+    border: 2px solid #6366F1;
+}
+
+QRadioButton::indicator:hover {
+    border: 2px solid #818CF8;
+}
+
+/* Floating action button style */
+QPushButton#fabButton {
+    background: qlineargradient(x1:0, y1:0, x2:1, y2:1,
+                               stop:0 #818CF8, stop:1 #6366F1);
+    border-radius: 28px;
+    min-width: 56px;
+    min-height: 56px;
+    max-width: 56px;
+    max-height: 56px;
+    font-size: 24px;
+    color: #FFFFFF;
+}
+
+QPushButton#fabButton:hover {
+    background: qlineargradient(x1:0, y1:0, x2:1, y2:1,
+                               stop:0 #A78BFA, stop:1 #818CF8);
+}
+
+/* --- 16. Animations (simulated with hover states) ------------- */
+/* All transitions are instant in Qt, but we define hover states
+   to simulate smooth transitions */
+
+/* --- End of Modern Material Design Theme ---------------------- */
