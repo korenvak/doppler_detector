@@ -4,8 +4,8 @@ import threading
 import time
 import os
 
-from PyQt5.QtWidgets import QWidget, QHBoxLayout, QPushButton
-from PyQt5.QtCore import Qt, pyqtSignal
+from PyQt5.QtWidgets import QWidget, QHBoxLayout, QPushButton, QSlider, QLabel
+from PyQt5.QtCore import Qt, pyqtSignal, QTimer
 from spectrogram_gui.utils.ffmpeg_utils import convert_to_wav
 import soundfile as sf
 
@@ -31,23 +31,39 @@ class SoundDevicePlayer(QWidget):
         self.lock = threading.Lock()
         self.playing = False
         self.position_callback = None
+        self.duration_ms = 0
+        self._user_dragging = False
+        self._ui_timer = QTimer(self)
+        self._ui_timer.setInterval(50)
+        self._ui_timer.timeout.connect(self._on_ui_tick)
 
         # Layout + playback/navigation buttons
         self.layout = QHBoxLayout(self)
         self.layout.setSpacing(12)
         self.layout.setAlignment(Qt.AlignCenter)
+        # Seek slider + time label
+        self.position_slider = QSlider(Qt.Horizontal)
+        self.position_slider.setRange(0, 0)
+        self.position_slider.sliderPressed.connect(self._on_slider_pressed)
+        self.position_slider.sliderReleased.connect(self._on_slider_released)
+        self.position_slider.sliderMoved.connect(self._on_slider_moved)
+        self.time_label = QLabel("00:00 / 00:00")
+
         self.prev_btn = QPushButton("⏮")
         self.next_btn = QPushButton("⏭")
         self.play_btn = QPushButton("▶ Play")
         self.stop_btn = QPushButton("⏹ Stop")
         self.play_btn.clicked.connect(self.play)
         self.stop_btn.clicked.connect(self.stop)
-        self.prev_btn.clicked.connect(self.prevRequested)
-        self.next_btn.clicked.connect(self.nextRequested)
+        # Emit navigation signals on button clicks
+        self.prev_btn.clicked.connect(lambda: self.prevRequested.emit())
+        self.next_btn.clicked.connect(lambda: self.nextRequested.emit())
         self.layout.addWidget(self.prev_btn)
         self.layout.addWidget(self.play_btn)
         self.layout.addWidget(self.stop_btn)
         self.layout.addWidget(self.next_btn)
+        self.layout.addWidget(self.position_slider, 1)
+        self.layout.addWidget(self.time_label)
 
     def load(self, filepath):
         """
@@ -70,6 +86,9 @@ class SoundDevicePlayer(QWidget):
         self.channels = 1 if self.data.ndim == 1 else self.data.shape[1]
         self.position = 0
         self.start_time = time.time()
+        self.duration_ms = int(1000 * (self.data.shape[0] if self.channels == 1 else self.data.shape[0]) / self.sample_rate)
+        self.position_slider.setRange(0, self.duration_ms)
+        self._update_time_label()
         print(
             f"[SoundDevicePlayer] Loaded: {filepath}, shape={self.data.shape}, sr={self.sample_rate}"
         )
@@ -91,6 +110,7 @@ class SoundDevicePlayer(QWidget):
         self.start_time = time.time() - (self.position / 1000.0)
         self.playing = True
         self.stream.start()
+        self._ui_timer.start()
 
     def stop(self):
         """
@@ -101,6 +121,7 @@ class SoundDevicePlayer(QWidget):
             self.stream.close()
             self.stream = None
         self.playing = False
+        self._ui_timer.stop()
 
     def seek(self, ms):
         """
@@ -112,6 +133,31 @@ class SoundDevicePlayer(QWidget):
             if self.playing:
                 self.stop()
                 self.play()
+
+    def _on_ui_tick(self):
+        """Update slider and label on the UI thread."""
+        if not self._user_dragging:
+            self.position_slider.setValue(int(self.position))
+        self._update_time_label()
+
+    def _update_time_label(self):
+        def fmt(ms):
+            sec = max(0, int(ms // 1000))
+            return f"{sec//60:02d}:{sec%60:02d}"
+        self.time_label.setText(f"{fmt(self.position)} / {fmt(self.duration_ms)}")
+
+    def _on_slider_pressed(self):
+        self._user_dragging = True
+
+    def _on_slider_released(self):
+        self._user_dragging = False
+        target = self.position_slider.value()
+        self.seek(int(target))
+
+    def _on_slider_moved(self, value):
+        # update preview label while dragging
+        self.position = int(value)
+        self._update_time_label()
 
     def _callback(self, outdata, frames, time_info, status):
         """

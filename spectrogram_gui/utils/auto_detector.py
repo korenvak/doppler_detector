@@ -254,7 +254,7 @@ class DopplerDetector(Detector):
 
 
 
-    def run_detection(self, filepath):
+    def run_detection(self, filepath, progress_callback=None):
         """
         Full pipeline: load, spec, detect, track, merge, filter.
         Returns list of tracks (each a list of (time_idx, freq_idx)).
@@ -262,7 +262,7 @@ class DopplerDetector(Detector):
         start_t = time.perf_counter()
         y, sr = self.load_audio(filepath)
         f, t, Sxx_norm, Sxx_filt = self.compute_spectrogram(y, sr, filepath)
-        peaks = self.detect_peaks_per_frame()
+        peaks = self.detect_peaks_per_frame(progress_callback=progress_callback)
         tracks = self.track_peaks_over_time(peaks, progress_callback=progress_callback)
 
         tracks = self.merge_tracks(tracks)

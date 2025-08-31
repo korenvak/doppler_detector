@@ -38,6 +38,23 @@ class AxisViewBox(pg.ViewBox):
         super().mouseDragEvent(ev, axis)
         self.setMouseEnabled(x=True, y=False)
 
+    def keyPressEvent(self, ev):
+        # add quick zoom shortcuts: +/- to zoom X, 0 to reset
+        if ev.key() in (Qt.Key_Plus, Qt.Key_Equal):
+            xr, yr = self.viewRange()
+            cx = 0.5 * (xr[0] + xr[1])
+            span = 0.5 * (xr[1] - xr[0]) * 0.8
+            self.setXRange(cx - span, cx + span, padding=0)
+        elif ev.key() in (Qt.Key_Minus, Qt.Key_Underscore):
+            xr, yr = self.viewRange()
+            cx = 0.5 * (xr[0] + xr[1])
+            span = 0.5 * (xr[1] - xr[0]) / 0.8
+            self.setXRange(cx - span, cx + span, padding=0)
+        elif ev.key() == Qt.Key_0:
+            self.autoRange()
+        else:
+            super().keyPressEvent(ev)
+
 
 class TimeAxisItem(pg.AxisItem):
     """
@@ -170,8 +187,9 @@ class SpectrogramCanvas(QWidget):
             ys = np.asarray(f_arr, dtype=float)
             curve = pg.PlotDataItem(
                 xs, ys,
-                pen=pg.mkPen(width=1.5, color=(255, 255, 0)),
-                antialias=True
+                pen=pg.mkPen(width=2, color=(255, 255, 0)),
+                antialias=True,
+                connect='finite'
             )
             self.plot.addItem(curve)
             self.auto_tracks_items.append(curve)

@@ -3,6 +3,7 @@ from PyQt5.QtWidgets import (
     QFormLayout, QComboBox, QSlider
 )
 from PyQt5.QtCore import Qt, QPropertyAnimation
+from PyQt5.QtCore import QTimer
 
 
 class ParamPanel(QFrame):
@@ -16,6 +17,9 @@ class ParamPanel(QFrame):
         self.setMaximumHeight(0)
         self.animation = QPropertyAnimation(self, b"maximumHeight")
         self.animation.setDuration(250)
+        self._debounce = QTimer(self)
+        self._debounce.setSingleShot(True)
+        self._debounce.setInterval(200)
 
         layout = QHBoxLayout(self)
         layout.setContentsMargins(12, 12, 12, 12)
@@ -86,14 +90,27 @@ class ParamPanel(QFrame):
             value = max(1, v) * 256
             self.nperseg_value.setText(str(value))
             p["window_size"] = value
+            self._debounce.start()
 
         def set_overlap(v):
             self.overlap_value.setText(f"{v} %")
             p["overlap"] = v
+            self._debounce.start()
 
         self.nperseg_slider.valueChanged.connect(set_nperseg)
         self.overlap_slider.valueChanged.connect(set_overlap)
-        self.cmap_combo.currentTextChanged.connect(lambda t: p.__setitem__("colormap", t))
+        def set_cmap(t):
+            p["colormap"] = t
+            # colormap can be applied without recompute
+            self.main.on_change_cmap(t)
+
+        self.cmap_combo.currentTextChanged.connect(set_cmap)
+
+        def do_recompute():
+            # apply updated spectrogram params and replot quickly
+            self.main.recompute_spectrogram_from_current_wave(maintain_view=True)
+
+        self._debounce.timeout.connect(do_recompute)
 
     def toggle(self, show: bool):
         self._expanded = show
