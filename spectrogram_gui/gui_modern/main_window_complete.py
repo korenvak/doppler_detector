@@ -35,8 +35,10 @@ import qtawesome as qta
 # Import our modules
 from .main_window import GlassPanel, ModernButton, ModernFileList, ModernControlBar
 from .spectrogram_canvas import OptimizedSpectrogramCanvas
+from .spectrogram_with_waveform import SpectrogramWithWaveform
 from .audio_processor import AudioProcessor
 from .audio_player import ModernAudioPlayer, AudioDeviceManager
+from .detector_dialog import ModernDetectorDialog
 
 
 class FilterDialog(QDialog):
@@ -499,17 +501,24 @@ class CompleteModernMainWindow(QMainWindow):
         return panel
         
     def create_spectrogram_panel(self):
-        """Create the spectrogram display panel"""
+        """Create the spectrogram display panel with waveform"""
         panel = QWidget()
         layout = QVBoxLayout(panel)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(0)
         
-        # Spectrogram canvas
-        self.spectrogram = OptimizedSpectrogramCanvas()
-        self.spectrogram.click_callback.connect(self.on_spectrogram_click)
-        self.spectrogram.hover_callback.connect(self.on_spectrogram_hover)
-        self.spectrogram.selection_callback.connect(self.on_spectrogram_selection)
+        # Spectrogram with waveform display
+        self.spectrogram = SpectrogramWithWaveform()
+        self.spectrogram.position_clicked.connect(self.on_spectrogram_click)
+        self.spectrogram.event_marked.connect(self.on_event_marked)
+        
+        # Set up event annotator metadata
+        if hasattr(self, 'current_file') and self.current_file:
+            filename = os.path.basename(self.current_file)
+            # Extract site and pixel from filename if available
+            site = "Site1"  # Default or extract from filename
+            pixel = "Pixel1"  # Default or extract from filename
+            self.spectrogram.set_annotation_metadata(site, pixel)
         
         layout.addWidget(self.spectrogram)
         
@@ -688,6 +697,11 @@ class CompleteModernMainWindow(QMainWindow):
         filter_action.triggered.connect(self.show_filter_dialog)
         toolbar.addAction(filter_action)
         
+        # Detection
+        detector_action = QAction(qta.icon('fa5s.radar', color='#9CA3AF'), "Detector Settings", self)
+        detector_action.triggered.connect(self.show_detector_dialog)
+        toolbar.addAction(detector_action)
+        
         toolbar.addSeparator()
         
         # Settings
@@ -808,6 +822,25 @@ class CompleteModernMainWindow(QMainWindow):
             # Update info
             self.update_audio_info()
             
+            # Set up annotation metadata
+            from datetime import datetime
+            filename = os.path.basename(file_path)
+            # Try to parse datetime from filename or use current time
+            file_start = datetime.now()  # You can parse from filename if it contains timestamp
+            self.spectrogram.set_annotation_metadata(
+                site="Site1",
+                pixel=filename.split('.')[0],
+                file_start=file_start
+            )
+            
+            # Load existing annotations if CSV exists
+            csv_path = file_path.replace('.flac', '_annotations.csv').replace('.wav', '_annotations.csv')
+            if os.path.exists(csv_path):
+                self.spectrogram.load_annotations(csv_path)
+            else:
+                # Set default CSV path for new annotations
+                self.spectrogram.event_annotator.set_csv_path(csv_path)
+            
             self.statusBar().showMessage(f"Loaded: {os.path.basename(file_path)}")
             
         except Exception as e:
@@ -835,8 +868,8 @@ class CompleteModernMainWindow(QMainWindow):
                 mode='magnitude'
             )
             
-            # Display
-            self.spectrogram.set_spectrogram_data(
+            # Display in both spectrogram and waveform
+            self.spectrogram.set_data(
                 self.current_audio,
                 self.current_sr,
                 freqs,
@@ -867,8 +900,9 @@ Channels: 1 (mono)"""
         
     def change_colormap(self, colormap_name):
         """Change spectrogram colormap"""
-        self.spectrogram.colormap_name = colormap_name
-        self.spectrogram.update_colormap()
+        if hasattr(self.spectrogram, 'spectrogram'):
+            self.spectrogram.spectrogram.colormap_name = colormap_name
+            self.spectrogram.spectrogram.update_colormap()
         
     def show_filter_dialog(self):
         """Show filter configuration dialog"""
@@ -925,17 +959,23 @@ Channels: 1 (mono)"""
         """Handle playback errors"""
         QMessageBox.warning(self, "Playback Error", error)
         
-    @Slot(float, object)
-    def on_spectrogram_click(self, time, event):
-        """Handle spectrogram clicks"""
-        if event.modifiers() & Qt.KeyboardModifier.ControlModifier:
-            # Seek to clicked position
+    @Slot(float)
+    def on_spectrogram_click(self, time):
+        """Handle spectrogram clicks for seeking"""
+        # Seek to clicked position if not marking
+        if not self.spectrogram.event_annotator.marking_enabled:
             self.seek_audio(time)
+    
+    @Slot(dict)
+    def on_event_marked(self, event_data):
+        """Handle event marking"""
+        self.statusBar().showMessage(f"Event marked: {event_data.get('Type', 'Unknown')}")
             
     @Slot(str)
     def on_spectrogram_hover(self, text):
         """Handle spectrogram hover"""
-        self.hover_label.setText(text)
+        if hasattr(self, 'hover_label'):
+            self.hover_label.setText(text)
         
     @Slot(float, float)
     def on_spectrogram_selection(self, start, end):
@@ -945,14 +985,14 @@ Channels: 1 (mono)"""
         
     def zoom_in(self):
         """Zoom in on spectrogram"""
-        if self.spectrogram.viewbox:
-            vr = self.spectrogram.viewbox.viewRect()
+        if hasattr(self.spectrogram, 'spectrogram') and self.spectrogram.spectrogram.viewbox:
+            vr = self.spectrogram.spectrogram.viewbox.viewRect()
             center_x = vr.center().x()
             center_y = vr.center().y()
             new_width = vr.width() * 0.8
             new_height = vr.height() * 0.8
             
-            self.spectrogram.viewbox.setRange(
+            self.spectrogram.spectrogram.viewbox.setRange(
                 xRange=(center_x - new_width/2, center_x + new_width/2),
                 yRange=(center_y - new_height/2, center_y + new_height/2),
                 padding=0
@@ -960,14 +1000,14 @@ Channels: 1 (mono)"""
             
     def zoom_out(self):
         """Zoom out on spectrogram"""
-        if self.spectrogram.viewbox:
-            vr = self.spectrogram.viewbox.viewRect()
+        if hasattr(self.spectrogram, 'spectrogram') and self.spectrogram.spectrogram.viewbox:
+            vr = self.spectrogram.spectrogram.viewbox.viewRect()
             center_x = vr.center().x()
             center_y = vr.center().y()
             new_width = vr.width() * 1.25
             new_height = vr.height() * 1.25
             
-            self.spectrogram.viewbox.setRange(
+            self.spectrogram.spectrogram.viewbox.setRange(
                 xRange=(center_x - new_width/2, center_x + new_width/2),
                 yRange=(center_y - new_height/2, center_y + new_height/2),
                 padding=0
@@ -975,8 +1015,8 @@ Channels: 1 (mono)"""
             
     def reset_view(self):
         """Reset spectrogram view"""
-        if self.spectrogram.viewbox:
-            self.spectrogram.viewbox.autoRange()
+        if hasattr(self.spectrogram, 'spectrogram') and self.spectrogram.spectrogram.viewbox:
+            self.spectrogram.spectrogram.viewbox.autoRange()
             
     def export_spectrogram(self):
         """Export spectrogram image"""
@@ -1027,6 +1067,30 @@ Channels: 1 (mono)"""
     def show_settings(self):
         """Show settings dialog"""
         QMessageBox.information(self, "Settings", "Settings dialog would appear here")
+    
+    def show_detector_dialog(self):
+        """Show detector configuration dialog"""
+        dialog = ModernDetectorDialog(self)
+        dialog.detection_started.connect(self.on_detection_started)
+        if dialog.exec() == QDialog.DialogCode.Accepted:
+            params = dialog.get_parameters()
+            self.run_detection(params)
+    
+    def on_detection_started(self, params):
+        """Handle detection start"""
+        self.statusBar().showMessage(f"Running {params['method']} detection...")
+    
+    def run_detection(self, params):
+        """Run detection with given parameters"""
+        if self.current_audio is None or self.spectrogram.spectrogram.Sxx is None:
+            QMessageBox.warning(self, "No Data", "Please load an audio file first.")
+            return
+        
+        # Here you would integrate with the actual detector classes
+        # For now, just show a message
+        QMessageBox.information(self, "Detection", 
+                              f"Detection would run with method: {params['method']}\n"
+                              f"Parameters: {params}")
         
     def load_settings(self):
         """Load application settings"""

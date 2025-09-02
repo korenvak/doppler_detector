@@ -264,7 +264,8 @@ class OptimizedSpectrogramCanvas(QWidget):
         
         # Create image item for spectrogram
         self.img_item = pg.ImageItem()
-        self.img_item.setOpts(axisOrder='row-major')
+        # Set axis order to match our data layout (freq on Y, time on X)
+        self.img_item.setOpts(axisOrder='col-major')
         self.plot.addItem(self.img_item)
         
         # Setup mouse tracking for hover info
@@ -335,8 +336,8 @@ class OptimizedSpectrogramCanvas(QWidget):
         # Normalize to 0-255 for display
         Sxx_norm = ((Sxx_db - vmin) / (vmax - vmin) * 255).astype(np.uint8)
         
-        # Transpose for correct orientation
-        self.Sxx_display = Sxx_norm.T
+        # Don't transpose - keep original orientation (freq x time)
+        self.Sxx_display = Sxx_norm
         
         # Generate LOD versions for large datasets
         if self.lod_enabled and self.Sxx_display.shape[0] > 2000:
