@@ -67,8 +67,7 @@ def create_dark_palette():
 def main():
     # 1) Create the QApplication
     app = QApplication(sys.argv)
-    # ensure keyboard events reach viewbox for zoom shortcuts
-    app.setAttribute(Qt.AA_UseHighDpiPixmaps, True)
+    # Qt6 handles high DPI automatically, no need for AA_UseHighDpiPixmaps
 
     # 2) Set dark palette as base (replaces qdarkstyle)
     app.setStyle("Fusion")  # Use Fusion style as base

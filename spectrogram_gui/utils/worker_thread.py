@@ -3,7 +3,7 @@ QThreadPool workers for non-blocking operations.
 Handles file loading, spectrogram computation, and other heavy tasks.
 """
 
-from PySide6.QtCore import QRu, Signalnnable, QObject, Signal, QThreadPool
+from PySide6.QtCore import QRunnable, QObject, Signal, QThreadPool
 import traceback
 import sys
 from typing import Optional, Callable, Any, Tuple

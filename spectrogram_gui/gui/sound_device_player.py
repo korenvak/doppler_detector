@@ -5,7 +5,7 @@ import time
 import os
 
 from PySide6.QtWidgets import QWidget, QHBoxLayout, QPushButton, QSlider, QLabel
-from PySide6.QtCore import Qt, Sig, Signalnal, QTimer
+from PySide6.QtCore import Qt, Signal, QTimer
 from doppler_detector.spectrogram_gui.utils.ffmpeg_utils import convert_to_wav
 import soundfile as sf
 

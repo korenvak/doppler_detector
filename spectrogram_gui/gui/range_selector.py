@@ -1,6 +1,6 @@
 # File: range_selector.py
 
-from PySide6.QtCore import QObject, Sig, Signalnal, Qt
+from PySide6.QtCore import QObject, Signal, Qt
 import pyqtgraph as pg
 
 

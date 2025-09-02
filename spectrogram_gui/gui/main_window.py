@@ -8,11 +8,11 @@ from PySide6.QtWidgets import (
     QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
     QFileDialog, QPushButton, QLabel, QListWidget, QListWidgetItem,
     QSplitter, QMessageBox, QMenu, QApplication, QFrame,
-    QToolButton, QAction, QGraphicsDropShadowEffect, QShortcut,
+    QToolButton, QGraphicsDropShadowEffect,
     QProgressDialog
 )
-from PySide6.QtGui import QKeySequence
-from PySide6.QtCore import Qt, Sig, Signalnal, QSize, QEvent, QSettings
+from PySide6.QtGui import QKeySequence, QAction, QShortcut
+from PySide6.QtCore import Qt, Signal, QSize, QEvent, QSettings
 
 import qtawesome as qta
 
@@ -445,7 +445,7 @@ class MainWindow(QMainWindow):
     def setup_shortcuts(self):
         """Set up keyboard shortcuts for the application."""
         # File operations
-        QShortcut(QKeySequence("Ctrl+O"), self).activated.connect(self.select_files)
+        QShortcut(QKeySequence("Ctrl+O"), self).activated.connect(self.select_multiple_files)
         QShortcut(QKeySequence("Ctrl+Shift+O"), self).activated.connect(self.select_folder)
         QShortcut(QKeySequence("Delete"), self).activated.connect(self.remove_selected_file)
         
