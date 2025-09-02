@@ -6,7 +6,9 @@ _DATE_RE = re.compile(
     r"""^
         \s*pixel\s*-\s*(?P<pixel>\d+)\s*-\s*
         (?P<start>\d{4}-\d{1,2}-\d{1,2}\s+\d{1,2}-\d{2}-\d{2})\s*-\s*
-        (?P<end>\d{4}-\d{1,2}-\d{1,2}\s+\d{1,2}-\d{2}-\d{2})\s*$
+        (?P<end>\d{4}-\d{1,2}-\d{1,2}\s+\d{1,2}-\d{2}-\d{2})
+        (?:\.\w+)?  # Optional file extension
+        \s*$
     """, re.X
 )
 

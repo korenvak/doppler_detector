@@ -103,6 +103,21 @@ def test_user_specific_example():
     assert (e - s).total_seconds() == 22*60 + 8
 
 
+def test_with_file_extension():
+    """Test parsing with file extensions (.flac, .wav, etc)."""
+    test_cases = [
+        "pixel - 1567 - 2025-19-08 12-47-45 - 2025-19-08 13-09-53.flac",
+        "pixel - 1567 - 2025-19-08 12-47-45 - 2025-19-08 13-09-53.wav",
+        "pixel - 1567 - 2025-19-08 12-47-45 - 2025-19-08 13-09-53.mp3",
+    ]
+    
+    for name in test_cases:
+        px, s, e = parse_times_from_filename(name)
+        assert px == 1567
+        assert (s.year, s.month, s.day, s.hour, s.minute, s.second) == (2025, 8, 19, 12, 47, 45)
+        assert (e.year, e.month, e.day, e.hour, e.minute, e.second) == (2025, 8, 19, 13, 9, 53)
+
+
 if __name__ == "__main__":
     # Run tests manually
     test_functions = [
@@ -113,7 +128,8 @@ if __name__ == "__main__":
         test_end_before_start,
         test_with_extra_whitespace,
         test_midnight_crossing,
-        test_user_specific_example
+        test_user_specific_example,
+        test_with_file_extension
     ]
     
     for test_func in test_functions:

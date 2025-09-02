@@ -671,10 +671,11 @@ class MainWindow(QMainWindow):
             if pixel is None:
                 pixel = 0
             
-            # For timestamp fallback, use current time as a reasonable default
-            # This allows event marking to work even when filename doesn't match pattern
-            # We use local time to stay consistent with the local-naive approach
-            start_timestamp = datetime.now()
+            # If we can't parse timestamps from filename, we'll use a simple time starting at 00:00:00
+            # This is better than using current time which would be misleading
+            # We'll use epoch start (1970-01-01) as a neutral reference that makes it clear
+            # the timestamps are not real
+            start_timestamp = datetime(2000, 1, 1, 0, 0, 0)  # Use a fixed reference date
             # We don't know the actual duration, so we'll set end_timestamp later after loading audio
             end_timestamp = None
 
