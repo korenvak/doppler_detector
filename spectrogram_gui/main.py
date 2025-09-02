@@ -3,6 +3,7 @@ import sys
 import os
 
 from PyQt5.QtWidgets import QApplication
+from PyQt5.QtCore import Qt
 
 # If you’re using qdarkstyle, import it. Otherwise you can omit these two lines.
 import qdarkstyle
@@ -22,6 +23,8 @@ STYLE_SHEET_PATH = os.path.join(
 def main():
     # 1) Create the QApplication
     app = QApplication(sys.argv)
+    # ensure keyboard events reach viewbox for zoom shortcuts
+    app.setAttribute(Qt.AA_UseHighDpiPixmaps, True)
 
     # 2) (Optional) Load qdarkstyle’s base dark theme
     # If you don’t want qdarkstyle, comment out these two lines and

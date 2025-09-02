@@ -112,12 +112,12 @@ class EventAnnotator:
         if not ok2:
             return
 
-        # build snapshot filename
+        # build snapshot filename (cross-platform, under user's home by default)
         timestr = start_dt.strftime("%H-%M-%S_%f")[:-3]  # HH-MM-SS_mmm
-        folder = r"C:\Users\koren.vaknin\Desktop\filles\orion analyzing\orion_liman_29_05_2025\spectrogram_snapshots"
-        os.makedirs(folder, exist_ok=True)
+        base_dir = os.path.join(os.path.expanduser("~"), "spectrogram_snapshots")
+        os.makedirs(base_dir, exist_ok=True)
         fname = f"{self.metadata['pixel']}_{timestr}.png"
-        snapshot_path = os.path.join(folder, fname)
+        snapshot_path = os.path.join(base_dir, fname)
 
         # build row (with microsecond‐precision and snapshot path)
         row = {

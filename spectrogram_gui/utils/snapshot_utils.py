@@ -16,7 +16,7 @@ def save_snapshot(canvas,
     """
     # 1) Build default path if none given
     if snapshot_path is None:
-        folder = r"C:\Users\koren.vaknin\Desktop\filles\orion analyzing\orion_liman_29_05_2025\spectrogram_snapshots"
+        folder = os.path.join(os.path.expanduser("~"), "spectrogram_snapshots")
         os.makedirs(folder, exist_ok=True)
         tstr  = start_dt.strftime("%H-%M-%S")
         mms   = f"{start_dt.microsecond // 100:03d}"

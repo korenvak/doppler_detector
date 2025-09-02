@@ -586,13 +586,18 @@ class MainWindow(QMainWindow):
         fname = os.path.basename(path)
         self.current_file = path
 
-        # parse site/pixel
-        try:
-            site = fname[0]
-            pixel = int(next(p for p in fname.split() if p.isdigit()))
-        except StopIteration:
-            QMessageBox.critical(self, "Parse Error", "Cannot extract site/pixel from filename.")
-            return
+        # parse site/pixel with robust fallback
+        site = fname[:1] if fname else "?"
+        pixel = None
+        for tok in re.split(r"[^0-9]+", fname):
+            if tok.isdigit():
+                try:
+                    pixel = int(tok)
+                    break
+                except ValueError:
+                    pass
+        if pixel is None:
+            pixel = 0
 
         # parse timestamp from filename or fall back to file modification time
         timestamp = parse_timestamp_from_filename(path)
@@ -616,7 +621,7 @@ class MainWindow(QMainWindow):
             return
 
         self.canvas.plot_spectrogram(freqs, times, Sxx, timestamp, maintain_view=maintain_view)
-        self.canvas.set_colormap(self.spectrogram_params["colormap"])
+        self.canvas.set_colormap(self.spectrogram_params.get("colormap", "magma"))
         self.annotator.set_metadata(site=site, pixel=pixel, file_start=timestamp)
 
         self.audio_player.load(path)
@@ -660,6 +665,8 @@ class MainWindow(QMainWindow):
                 self.audio_player.stop()
             else:
                 self.audio_player.play()
+        else:
+            super().keyPressEvent(event)
 
 
 
@@ -807,6 +814,21 @@ class MainWindow(QMainWindow):
             self.spectrogram_params.update(params)
             if self.current_file:
                 self.load_file_from_path(self.current_file, maintain_view=True)
+
+    def recompute_spectrogram_from_current_wave(self, maintain_view=True):
+        """Recompute spectrogram from the audio player's current waveform.
+        Keeps view if requested and updates detector inputs.
+        """
+        wave, sr = self.audio_player.get_waveform_copy(return_sr=True)
+        if wave is None or sr is None:
+            return
+        freqs, times, Sxx, Sxx_filt = compute_spectrogram(
+            wave, sr, self.current_file or "", params=self.spectrogram_params
+        )
+        self.canvas.plot_spectrogram(freqs, times, Sxx, self.canvas.start_time, maintain_view=maintain_view)
+        self.detector.freqs = freqs
+        self.detector.times = times
+        self.detector.Sxx_filt = Sxx_filt
 
     def toggle_param_panel(self, visible):
         self.param_panel.toggle(visible)
