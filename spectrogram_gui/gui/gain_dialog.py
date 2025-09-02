@@ -2,7 +2,7 @@
 
 from PyQt5.QtWidgets import QDialog, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit, QPushButton, QMessageBox
 import numpy as np
-from spectrogram_gui.utils.spectrogram_utils import compute_spectrogram
+from doppler_detector.spectrogram_gui.utils.spectrogram_utils import compute_spectrogram
 
 
 class GainDialog(QDialog):

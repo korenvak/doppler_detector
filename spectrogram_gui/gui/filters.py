@@ -14,8 +14,8 @@ from PyQt5.QtWidgets import (
     QStackedWidget,
     QWidget,
 )
-from spectrogram_gui.utils.spectrogram_utils import compute_spectrogram
-from spectrogram_gui.utils.filter_utils import (
+from doppler_detector.spectrogram_gui.utils.spectrogram_utils import compute_spectrogram
+from doppler_detector.spectrogram_gui.utils.filter_utils import (
     apply_nlms,
     apply_gaussian,
     apply_median,

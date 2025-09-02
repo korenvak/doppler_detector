@@ -5,8 +5,8 @@ from PyQt5.QtCore import Qt, QTimer
 from datetime import timedelta
 import pyqtgraph as pg
 
-from spectrogram_gui.utils.snapshot_utils import save_snapshot
-from spectrogram_gui.gui.annotation_editor import AnnotationEditorDialog
+from doppler_detector.spectrogram_gui.utils.snapshot_utils import save_snapshot
+from doppler_detector.spectrogram_gui.gui.annotation_editor import AnnotationEditorDialog
 
 class EventAnnotator:
     def __init__(self, canvas, undo_callback=None):
@@ -119,10 +119,10 @@ class EventAnnotator:
         fname = f"{self.metadata['pixel']}_{timestr}.png"
         snapshot_path = os.path.join(base_dir, fname)
 
-        # build row (with microsecond‐precision and snapshot path)
+        # build row (using local-naive datetime format without microseconds)
         row = {
-            "Start":    f"{start_dt:%Y-%m-%d %H:%M:%S}:{start_dt.microsecond // 100:04d}",
-            "End":      f"{end_dt:%Y-%m-%d %H:%M:%S}:{end_dt.microsecond // 100:04d}",
+            "Start":    start_dt.strftime("%Y-%m-%d %H:%M:%S"),
+            "End":      end_dt.strftime("%Y-%m-%d %H:%M:%S"),
             "Site":     self.metadata["site"],
             "Pixel":    self.metadata["pixel"],
             "Type":     ev_type,
