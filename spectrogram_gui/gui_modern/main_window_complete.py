@@ -38,7 +38,7 @@ from .spectrogram_canvas import OptimizedSpectrogramCanvas
 from .spectrogram_with_waveform import SpectrogramWithWaveform
 from .audio_processor import AudioProcessor
 from .audio_player import ModernAudioPlayer, AudioDeviceManager
-from .detector_dialog import ModernDetectorDialog
+from .detector_dialog_fixed import ModernDetectorDialog
 
 
 class FilterDialog(QDialog):
@@ -398,6 +398,16 @@ class CompleteModernMainWindow(QMainWindow):
         self.current_audio = None
         self.current_sr = None
         self.current_file = None
+        
+        # Spectrogram parameters (for detector)
+        self.spectrogram_params = {
+            'nperseg': 256,
+            'noverlap': 128,
+            'nfft': 512,
+            'window': 'hann',
+            'scaling': 'density',
+            'mode': 'magnitude'
+        }
         self.filters_config = {}
         
         # Setup UI
@@ -824,12 +834,23 @@ class CompleteModernMainWindow(QMainWindow):
             
             # Set up annotation metadata
             from datetime import datetime
+            from spectrogram_gui.utils.time_parse import parse_times_from_filename
+            
             filename = os.path.basename(file_path)
-            # Try to parse datetime from filename or use current time
-            file_start = datetime.now()  # You can parse from filename if it contains timestamp
+            
+            # Try to parse datetime from filename
+            try:
+                pixel_id, start_dt, end_dt = parse_times_from_filename(filename)
+                file_start = start_dt
+                pixel_str = f"pixel-{pixel_id}"
+            except (ValueError, Exception):
+                # Fallback if filename doesn't match expected format
+                file_start = datetime.now()
+                pixel_str = filename.split('.')[0]
+                
             self.spectrogram.set_annotation_metadata(
                 site="Site1",
-                pixel=filename.split('.')[0],
+                pixel=pixel_str,
                 file_start=file_start
             )
             
@@ -904,17 +925,12 @@ Channels: 1 (mono)"""
             self.spectrogram.spectrogram.colormap_name = colormap_name
             self.spectrogram.spectrogram.update_colormap()
         
-    def show_filter_dialog(self):
+    def show_filter_dialog(self, mode="bandpass"):
         """Show filter configuration dialog"""
-        dialog = FilterDialog(self)
-        if dialog.exec() == QDialog.DialogCode.Accepted:
-            self.filters_config = dialog.get_filters_config()
-            
-            # Reprocess current audio if loaded
-            if self.current_file:
-                item = self.file_list.currentItem()
-                if item:
-                    self.load_file(item)
+        from .filter_dialog_fixed import ModernFilterDialog
+        
+        dialog = ModernFilterDialog(self, mode=mode)
+        dialog.exec()
                     
     def play_audio(self):
         """Play audio"""
@@ -1070,27 +1086,85 @@ Channels: 1 (mono)"""
     
     def show_detector_dialog(self):
         """Show detector configuration dialog"""
-        dialog = ModernDetectorDialog(self)
+        # Import detector
+        from spectrogram_gui.utils.auto_detector import DopplerDetector
+        
+        # Create detector if not exists
+        if not hasattr(self, 'detector'):
+            self.detector = DopplerDetector()
+            # Set spectrogram params if available
+            if hasattr(self, 'spectrogram_params'):
+                self.detector.spectrogram_params = self.spectrogram_params
+        
+        dialog = ModernDetectorDialog(self, detector=self.detector)
         dialog.detection_started.connect(self.on_detection_started)
         if dialog.exec() == QDialog.DialogCode.Accepted:
-            params = dialog.get_parameters()
-            self.run_detection(params)
+            self.run_detection()
     
     def on_detection_started(self, params):
         """Handle detection start"""
-        self.statusBar().showMessage(f"Running {params['method']} detection...")
+        self.statusBar().showMessage(f"Running detection...")
     
-    def run_detection(self, params):
-        """Run detection with given parameters"""
-        if self.current_audio is None or self.spectrogram.spectrogram.Sxx is None:
+    def run_detection(self):
+        """Run detection with current detector parameters"""
+        if self.current_audio is None:
             QMessageBox.warning(self, "No Data", "Please load an audio file first.")
             return
         
-        # Here you would integrate with the actual detector classes
-        # For now, just show a message
-        QMessageBox.information(self, "Detection", 
-                              f"Detection would run with method: {params['method']}\n"
-                              f"Parameters: {params}")
+        if not hasattr(self, 'detector'):
+            from spectrogram_gui.utils.auto_detector import DopplerDetector
+            self.detector = DopplerDetector()
+            
+        # Get the canvas (could be in different places)
+        canvas = None
+        if hasattr(self, 'spectrogram') and hasattr(self.spectrogram, 'spectrogram'):
+            canvas = self.spectrogram.spectrogram
+        elif hasattr(self, 'spectrogram_canvas'):
+            canvas = self.spectrogram_canvas
+        elif hasattr(self, 'canvas'):
+            canvas = self.canvas
+            
+        if canvas is None or not hasattr(canvas, 'Sxx'):
+            QMessageBox.warning(self, "No Spectrogram", "Please compute spectrogram first.")
+            return
+            
+        try:
+            # Update detector with current spectrogram data
+            self.detector.freqs = canvas.freqs
+            self.detector.times = canvas.times
+            self.detector.Sxx_filt = canvas.Sxx
+            
+            # Run detection
+            self.statusBar().showMessage("Running detection...")
+            QApplication.processEvents()
+            
+            tracks = self.detector.detect_tracks()
+            
+            if tracks:
+                # Process tracks for display
+                processed = []
+                for track in tracks:
+                    if len(track) > 0:
+                        time_indices = [p[0] for p in track]
+                        freq_indices = [p[1] for p in track]
+                        
+                        # Convert indices to actual time/freq values
+                        time_values = [self.detector.times[i] if i < len(self.detector.times) else 0 for i in time_indices]
+                        freq_values = [self.detector.freqs[i] if i < len(self.detector.freqs) else 0 for i in freq_indices]
+                        
+                        processed.append((time_values, freq_values))
+                
+                # Clear old and draw new tracks
+                canvas.clear_auto_tracks()
+                canvas.plot_auto_tracks(processed)
+                
+                self.statusBar().showMessage(f"Detection complete: {len(processed)} tracks found")
+            else:
+                self.statusBar().showMessage("No tracks detected")
+                
+        except Exception as e:
+            QMessageBox.critical(self, "Detection Error", f"Failed to run detection:\n{str(e)}")
+            self.statusBar().showMessage("Detection failed")
         
     def load_settings(self):
         """Load application settings"""

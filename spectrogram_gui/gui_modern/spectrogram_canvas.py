@@ -228,6 +228,9 @@ class OptimizedSpectrogramCanvas(QWidget):
         # Selection
         self.selection_region = None
         
+        # Auto-detection tracks
+        self.auto_tracks_items = []
+        
         # Update timer for smooth animations
         self.animation_timer = QTimer()
         self.animation_timer.timeout.connect(self.update_animations)
@@ -264,8 +267,6 @@ class OptimizedSpectrogramCanvas(QWidget):
         
         # Create image item for spectrogram
         self.img_item = pg.ImageItem()
-        # Set axis order to match our data layout (freq on Y, time on X)
-        self.img_item.setOpts(axisOrder='col-major')
         self.plot.addItem(self.img_item)
         
         # Setup mouse tracking for hover info
@@ -336,8 +337,8 @@ class OptimizedSpectrogramCanvas(QWidget):
         # Normalize to 0-255 for display
         Sxx_norm = ((Sxx_db - vmin) / (vmax - vmin) * 255).astype(np.uint8)
         
-        # Don't transpose - keep original orientation (freq x time)
-        self.Sxx_display = Sxx_norm
+        # Transpose for correct display (time on X-axis, freq on Y-axis)
+        self.Sxx_display = Sxx_norm.T
         
         # Generate LOD versions for large datasets
         if self.lod_enabled and self.Sxx_display.shape[0] > 2000:
@@ -386,8 +387,8 @@ class OptimizedSpectrogramCanvas(QWidget):
         
         # Set proper scaling
         if self.times is not None and self.freqs is not None:
-            scale_x = (self.times[-1] - self.times[0]) / display_data.shape[1]
-            scale_y = (self.freqs[-1] - self.freqs[0]) / display_data.shape[0]
+            scale_x = (self.times[-1] - self.times[0]) / display_data.shape[0]
+            scale_y = (self.freqs[-1] - self.freqs[0]) / display_data.shape[1]
             self.img_item.setRect(QRectF(self.times[0], self.freqs[0],
                                         self.times[-1] - self.times[0],
                                         self.freqs[-1] - self.freqs[0]))
@@ -483,3 +484,38 @@ class OptimizedSpectrogramCanvas(QWidget):
         if self.selection_region:
             self.plot.removeItem(self.selection_region)
             self.selection_region = None
+            
+    def plot_auto_tracks(self, tracks):
+        """
+        Overlay automatic detection tracks on the spectrogram.
+        tracks: list of (time_array, freq_array) tuples
+        """
+        # Clear existing tracks
+        self.clear_auto_tracks()
+        
+        # Plot each track
+        for t_arr, f_arr in tracks:
+            xs = np.asarray(t_arr, dtype=float)
+            ys = np.asarray(f_arr, dtype=float)
+            
+            # Create track curve with modern styling
+            curve = pg.PlotDataItem(
+                xs, ys,
+                pen=pg.mkPen(width=2, color=(255, 255, 0, 200)),  # Yellow with transparency
+                antialias=True,
+                connect='finite'
+            )
+            self.plot.addItem(curve)
+            self.auto_tracks_items.append(curve)
+            
+    def clear_auto_tracks(self):
+        """Clear all auto-detection tracks from the display"""
+        if not hasattr(self, 'auto_tracks_items'):
+            self.auto_tracks_items = []
+            
+        for item in self.auto_tracks_items:
+            try:
+                self.plot.removeItem(item)
+            except:
+                pass
+        self.auto_tracks_items.clear()
