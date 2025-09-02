@@ -698,7 +698,7 @@ class CompleteModernMainWindow(QMainWindow):
         toolbar.addAction(filter_action)
         
         # Detection
-        detector_action = QAction(qta.icon('fa5s.radar', color='#9CA3AF'), "Detector Settings", self)
+        detector_action = QAction(qta.icon('fa5s.satellite', color='#9CA3AF'), "Detector Settings", self)
         detector_action.triggered.connect(self.show_detector_dialog)
         toolbar.addAction(detector_action)
         
