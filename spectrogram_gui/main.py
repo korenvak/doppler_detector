@@ -5,7 +5,7 @@ import os
 from PyQt5.QtWidgets import QApplication
 from PyQt5.QtCore import Qt
 
-# If you’re using qdarkstyle, import it. Otherwise you can omit these two lines.
+# If you’re using qdarkstyle, import it Otherwise you can omit these two lines.
 import qdarkstyle
 
 # Adjust the import path if necessary—this assumes that `main.py`
@@ -23,7 +23,8 @@ STYLE_SHEET_PATH = os.path.join(
 LIGHT_STYLE_PATH = os.path.join(
     os.path.dirname(__file__),
     "styles",
-    "app_light.qss"
+
+    "V2style.qss"
 )
 
 

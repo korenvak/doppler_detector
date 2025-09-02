@@ -1,0 +1,745 @@
+/* ================================================================
+   Modern Glassmorphic Dark Theme for PyQt5 Spectrogram GUI
+   ================================================================
+
+   Color Palette:
+   - Deep Space: #0A0E27
+   - Dark Glass: #161B3D
+   - Mid Glass: #1F2547
+   - Light Glass: #2A3356
+   - Accent Primary: #00D4FF (Cyan)
+   - Accent Secondary: #7B61FF (Purple)
+   - Accent Tertiary: #FF61DC (Pink)
+   - Success: #00FF88
+   - Warning: #FFB800
+   - Error: #FF3366
+   - Text Primary: #FFFFFF
+   - Text Secondary: #B8C0E0
+   - Text Muted: #7A86A8
+
+   ================================================================ */
+
+/* === 1. GLOBAL STYLES ========================================= */
+
+QWidget {
+    background-color: #0A0E27;
+    color: #FFFFFF;
+    font-family: "Segoe UI", "SF Pro Display", "Helvetica Neue", Arial, sans-serif;
+    font-size: 13px;
+}
+
+QMainWindow {
+    background-color: #0A0E27;
+}
+
+/* === 2. FRAMES & PANELS ======================================= */
+
+QFrame {
+    background-color: rgba(22, 27, 61, 180);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 12px;
+}
+
+QFrame#card {
+    background: qlineargradient(x1:0, y1:0, x2:1, y2:1,
+                               stop:0 rgba(42, 51, 86, 200),
+                               stop:1 rgba(31, 37, 71, 200));
+    border: 1px solid rgba(0, 212, 255, 0.2);
+    border-radius: 16px;
+    padding: 12px;
+}
+
+QFrame#paramPanel {
+    background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                               stop:0 rgba(31, 37, 71, 220),
+                               stop:0.5 rgba(22, 27, 61, 240),
+                               stop:1 rgba(31, 37, 71, 220));
+    border: 1px solid rgba(123, 97, 255, 0.3);
+    border-radius: 16px;
+    padding: 16px;
+}
+
+/* === 3. BUTTONS =============================================== */
+
+QPushButton {
+    background: qlineargradient(x1:0, y1:0, x2:1, y2:1,
+                                stop:0 rgba(0, 212, 255, 0.9),
+                                stop:1 rgba(123, 97, 255, 0.9));
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    border-radius: 10px;
+    padding: 8px 16px;
+    color: #FFFFFF;
+    font-weight: 600;
+    min-height: 20px;
+}
+
+QPushButton:hover {
+    background: qlineargradient(x1:0, y1:0, x2:1, y2:1,
+                                stop:0 rgba(0, 212, 255, 1),
+                                stop:1 rgba(255, 97, 220, 1));
+    border: 1px solid rgba(255, 255, 255, 0.4);
+}
+
+QPushButton:pressed {
+    background: qlineargradient(x1:0, y1:0, x2:1, y2:1,
+                                stop:0 rgba(0, 150, 200, 1),
+                                stop:1 rgba(100, 70, 200, 1));
+    padding: 9px 15px 7px 17px;
+}
+
+QPushButton:disabled {
+    background: rgba(42, 51, 86, 0.5);
+    border: 1px solid rgba(255, 255, 255, 0.05);
+    color: #7A86A8;
+}
+
+QToolButton {
+    background: rgba(42, 51, 86, 0.6);
+    border: 1px solid rgba(0, 212, 255, 0.2);
+    border-radius: 8px;
+    padding: 6px;
+    color: #B8C0E0;
+}
+
+QToolButton:hover {
+    background: rgba(0, 212, 255, 0.2);
+    border: 1px solid rgba(0, 212, 255, 0.5);
+    color: #FFFFFF;
+}
+
+QToolButton:pressed {
+    background: rgba(0, 212, 255, 0.3);
+}
+
+QToolButton:checked {
+    background: qlineargradient(x1:0, y1:0, x2:1, y2:0,
+                                stop:0 rgba(0, 212, 255, 0.7),
+                                stop:1 rgba(123, 97, 255, 0.7));
+    border: 1px solid rgba(0, 212, 255, 0.8);
+    color: #FFFFFF;
+}
+
+/* === 4. LABELS ================================================ */
+
+QLabel {
+    background: transparent;
+    color: #FFFFFF;
+    border: none;
+    padding: 2px;
+}
+
+QLabel#fileListHeading {
+    font-size: 18px;
+    font-weight: 700;
+    color: #00D4FF;
+    background: qlineargradient(x1:0, y1:0, x2:1, y2:0,
+                               stop:0 rgba(0, 212, 255, 0.15),
+                               stop:0.5 rgba(123, 97, 255, 0.15),
+                               stop:1 rgba(255, 97, 220, 0.15));
+    border: 1px solid rgba(0, 212, 255, 0.3);
+    border-radius: 8px;
+    padding: 8px 12px;
+    margin-bottom: 8px;
+}
+
+QLabel#fileListSubheading {
+    color: #B8C0E0;
+    font-size: 11px;
+    font-weight: 500;
+    padding: 4px 8px;
+}
+
+QLabel#summaryLine {
+    font-size: 24px;
+    font-weight: 700;
+    color: #00FF88;
+    background: transparent;
+}
+
+/* === 5. LISTS ================================================= */
+
+QListWidget, QListView {
+    background: rgba(22, 27, 61, 0.8);
+    border: 1px solid rgba(0, 212, 255, 0.15);
+    border-radius: 12px;
+    padding: 8px;
+    outline: none;
+}
+
+QListWidget::item, QListView::item {
+    background: rgba(42, 51, 86, 0.3);
+    border: 1px solid transparent;
+    border-radius: 6px;
+    padding: 8px 12px;
+    margin: 2px 0;
+    color: #B8C0E0;
+}
+
+QListWidget::item:hover, QListView::item:hover {
+    background: rgba(0, 212, 255, 0.15);
+    border: 1px solid rgba(0, 212, 255, 0.3);
+    color: #FFFFFF;
+}
+
+QListWidget::item:selected, QListView::item:selected {
+    background: qlineargradient(x1:0, y1:0, x2:1, y2:0,
+                                stop:0 rgba(0, 212, 255, 0.3),
+                                stop:1 rgba(123, 97, 255, 0.3));
+    border: 1px solid rgba(0, 212, 255, 0.5);
+    color: #FFFFFF;
+}
+
+/* === 6. GROUP BOXES =========================================== */
+
+QGroupBox {
+    background: rgba(31, 37, 71, 0.6);
+    border: 2px solid rgba(123, 97, 255, 0.3);
+    border-radius: 12px;
+    margin-top: 12px;
+    padding-top: 16px;
+    font-size: 14px;
+}
+
+QGroupBox::title {
+    subcontrol-origin: margin;
+    left: 16px;
+    padding: 0 8px 0 8px;
+    color: #7B61FF;
+    font-weight: 700;
+    background: qlineargradient(x1:0, y1:0, x2:1, y2:0,
+                               stop:0 rgba(123, 97, 255, 0.2),
+                               stop:1 rgba(255, 97, 220, 0.2));
+    border-radius: 6px;
+}
+
+/* === 7. INPUT FIELDS ========================================== */
+
+QLineEdit, QTextEdit, QPlainTextEdit {
+    background: rgba(22, 27, 61, 0.9);
+    border: 1px solid rgba(0, 212, 255, 0.2);
+    border-radius: 8px;
+    padding: 8px 12px;
+    color: #FFFFFF;
+    selection-background-color: rgba(0, 212, 255, 0.3);
+    selection-color: #FFFFFF;
+}
+
+QLineEdit:focus, QTextEdit:focus, QPlainTextEdit:focus {
+    border: 2px solid rgba(0, 212, 255, 0.6);
+    background: rgba(22, 27, 61, 1);
+}
+
+/* === 8. COMBO BOXES =========================================== */
+
+QComboBox {
+    background: rgba(31, 37, 71, 0.9);
+    border: 1px solid rgba(0, 212, 255, 0.2);
+    border-radius: 8px;
+    padding: 6px 12px;
+    color: #FFFFFF;
+    min-height: 20px;
+}
+
+QComboBox:hover {
+    border: 1px solid rgba(0, 212, 255, 0.4);
+    background: rgba(31, 37, 71, 1);
+}
+
+QComboBox:focus {
+    border: 2px solid rgba(0, 212, 255, 0.6);
+}
+
+QComboBox::drop-down {
+    subcontrol-origin: padding;
+    subcontrol-position: top right;
+    width: 30px;
+    border-left: 1px solid rgba(0, 212, 255, 0.2);
+    border-top-right-radius: 8px;
+    border-bottom-right-radius: 8px;
+    background: rgba(0, 212, 255, 0.1);
+}
+
+QComboBox::down-arrow {
+    width: 0;
+    height: 0;
+    border-left: 5px solid transparent;
+    border-right: 5px solid transparent;
+    border-top: 6px solid #00D4FF;
+}
+
+QComboBox QAbstractItemView {
+    background: rgba(22, 27, 61, 0.95);
+    border: 1px solid rgba(0, 212, 255, 0.3);
+    border-radius: 8px;
+    selection-background-color: rgba(0, 212, 255, 0.3);
+    outline: none;
+}
+
+/* === 9. SLIDERS =============================================== */
+
+QSlider::groove:horizontal {
+    height: 8px;
+    background: qlineargradient(x1:0, y1:0, x2:1, y2:0,
+                                stop:0 rgba(123, 97, 255, 0.3),
+                                stop:1 rgba(0, 212, 255, 0.3));
+    border-radius: 4px;
+}
+
+QSlider::handle:horizontal {
+    background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                                stop:0 #00D4FF,
+                                stop:1 #7B61FF);
+    border: 2px solid rgba(255, 255, 255, 0.3);
+    width: 18px;
+    height: 18px;
+    margin: -5px 0;
+    border-radius: 9px;
+}
+
+QSlider::handle:horizontal:hover {
+    background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                                stop:0 #00FF88,
+                                stop:1 #00D4FF);
+    border: 2px solid rgba(255, 255, 255, 0.5);
+    width: 20px;
+    height: 20px;
+    margin: -6px 0;
+    border-radius: 10px;
+}
+
+QSlider::groove:vertical {
+    width: 8px;
+    background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                                stop:0 rgba(0, 212, 255, 0.3),
+                                stop:1 rgba(123, 97, 255, 0.3));
+    border-radius: 4px;
+}
+
+QSlider::handle:vertical {
+    background: qlineargradient(x1:0, y1:0, x2:1, y2:0,
+                                stop:0 #00D4FF,
+                                stop:1 #7B61FF);
+    border: 2px solid rgba(255, 255, 255, 0.3);
+    width: 18px;
+    height: 18px;
+    margin: 0 -5px;
+    border-radius: 9px;
+}
+
+/* === 10. SCROLLBARS =========================================== */
+
+QScrollBar:vertical {
+    background: rgba(22, 27, 61, 0.3);
+    width: 12px;
+    border-radius: 6px;
+    border: none;
+}
+
+QScrollBar::handle:vertical {
+    background: qlineargradient(x1:0, y1:0, x2:1, y2:0,
+                                stop:0 rgba(0, 212, 255, 0.5),
+                                stop:1 rgba(123, 97, 255, 0.5));
+    border-radius: 6px;
+    min-height: 30px;
+}
+
+QScrollBar::handle:vertical:hover {
+    background: qlineargradient(x1:0, y1:0, x2:1, y2:0,
+                                stop:0 rgba(0, 212, 255, 0.7),
+                                stop:1 rgba(255, 97, 220, 0.7));
+}
+
+QScrollBar:horizontal {
+    background: rgba(22, 27, 61, 0.3);
+    height: 12px;
+    border-radius: 6px;
+    border: none;
+}
+
+QScrollBar::handle:horizontal {
+    background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                                stop:0 rgba(0, 212, 255, 0.5),
+                                stop:1 rgba(123, 97, 255, 0.5));
+    border-radius: 6px;
+    min-width: 30px;
+}
+
+QScrollBar::handle:horizontal:hover {
+    background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                                stop:0 rgba(0, 212, 255, 0.7),
+                                stop:1 rgba(255, 97, 220, 0.7));
+}
+
+QScrollBar::add-line, QScrollBar::sub-line {
+    background: none;
+    border: none;
+}
+
+QScrollBar::add-page, QScrollBar::sub-page {
+    background: none;
+}
+
+/* === 11. TABLES =============================================== */
+
+QTableWidget, QTableView {
+    background: rgba(22, 27, 61, 0.6);
+    alternate-background-color: rgba(31, 37, 71, 0.4);
+    gridline-color: rgba(0, 212, 255, 0.1);
+    border: 1px solid rgba(0, 212, 255, 0.2);
+    border-radius: 12px;
+    padding: 4px;
+}
+
+QTableWidget::item, QTableView::item {
+    padding: 6px;
+    color: #B8C0E0;
+}
+
+QTableWidget::item:selected, QTableView::item:selected {
+    background: rgba(0, 212, 255, 0.2);
+    color: #FFFFFF;
+}
+
+QHeaderView::section {
+    background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                                stop:0 rgba(42, 51, 86, 0.9),
+                                stop:1 rgba(31, 37, 71, 0.9));
+    color: #00D4FF;
+    padding: 8px;
+    border: none;
+    border-right: 1px solid rgba(0, 212, 255, 0.2);
+    border-bottom: 2px solid rgba(0, 212, 255, 0.3);
+    font-weight: 600;
+}
+
+QHeaderView::section:hover {
+    background: rgba(0, 212, 255, 0.2);
+}
+
+/* === 12. TABS ================================================= */
+
+QTabWidget::pane {
+    background: rgba(22, 27, 61, 0.8);
+    border: 1px solid rgba(0, 212, 255, 0.2);
+    border-radius: 8px;
+}
+
+QTabBar::tab {
+    background: rgba(31, 37, 71, 0.6);
+    color: #B8C0E0;
+    padding: 10px 16px;
+    margin-right: 2px;
+    border-top-left-radius: 8px;
+    border-top-right-radius: 8px;
+}
+
+QTabBar::tab:selected {
+    background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                                stop:0 rgba(0, 212, 255, 0.3),
+                                stop:1 rgba(22, 27, 61, 0.8));
+    color: #FFFFFF;
+    border: 1px solid rgba(0, 212, 255, 0.4);
+    border-bottom: none;
+}
+
+QTabBar::tab:hover:selected {
+    background: rgba(0, 212, 255, 0.1);
+    color: #00D4FF;
+}
+
+/* === 13. MENUS ================================================ */
+
+QMenuBar {
+    background: rgba(10, 14, 39, 0.95);
+    border-bottom: 1px solid rgba(0, 212, 255, 0.2);
+    padding: 4px;
+}
+
+QMenuBar::item {
+    background: transparent;
+    color: #B8C0E0;
+    padding: 8px 16px;
+    border-radius: 6px;
+}
+
+QMenuBar::item:selected {
+    background: rgba(0, 212, 255, 0.2);
+    color: #FFFFFF;
+}
+
+QMenu {
+    background: rgba(22, 27, 61, 0.95);
+    border: 1px solid rgba(0, 212, 255, 0.3);
+    border-radius: 8px;
+    padding: 8px;
+}
+
+QMenu::item {
+    background: transparent;
+    color: #B8C0E0;
+    padding: 8px 24px;
+    border-radius: 4px;
+}
+
+QMenu::item:selected {
+    background: rgba(0, 212, 255, 0.3);
+    color: #FFFFFF;
+}
+
+QMenu::separator {
+    height: 1px;
+    background: rgba(0, 212, 255, 0.2);
+    margin: 8px 16px;
+}
+
+/* === 14. TOOLTIPS ============================================= */
+
+QToolTip {
+    background: rgba(10, 14, 39, 0.95);
+    border: 1px solid rgba(0, 212, 255, 0.4);
+    border-radius: 8px;
+    color: #FFFFFF;
+    padding: 8px 12px;
+    font-size: 12px;
+}
+
+/* === 15. PROGRESS BARS ======================================== */
+
+QProgressBar {
+    background: rgba(22, 27, 61, 0.8);
+    border: 1px solid rgba(0, 212, 255, 0.2);
+    border-radius: 8px;
+    text-align: center;
+    color: #FFFFFF;
+    height: 24px;
+}
+
+QProgressBar::chunk {
+    background: qlineargradient(x1:0, y1:0, x2:1, y2:0,
+                                stop:0 #00D4FF,
+                                stop:0.5 #7B61FF,
+                                stop:1 #FF61DC);
+    border-radius: 7px;
+}
+
+/* === 16. SPIN BOXES =========================================== */
+
+QSpinBox, QDoubleSpinBox {
+    background: rgba(22, 27, 61, 0.9);
+    border: 1px solid rgba(0, 212, 255, 0.2);
+    border-radius: 6px;
+    padding: 6px;
+    color: #FFFFFF;
+}
+
+QSpinBox:focus, QDoubleSpinBox:focus {
+    border: 2px solid rgba(0, 212, 255, 0.6);
+}
+
+QSpinBox::up-button, QDoubleSpinBox::up-button {
+    subcontrol-origin: border;
+    subcontrol-position: top right;
+    width: 20px;
+    background: rgba(0, 212, 255, 0.2);
+    border-left: 1px solid rgba(0, 212, 255, 0.2);
+    border-top-right-radius: 6px;
+}
+
+QSpinBox::down-button, QDoubleSpinBox::down-button {
+    subcontrol-origin: border;
+    subcontrol-position: bottom right;
+    width: 20px;
+    background: rgba(123, 97, 255, 0.2);
+    border-left: 1px solid rgba(0, 212, 255, 0.2);
+    border-bottom-right-radius: 6px;
+}
+
+QSpinBox::up-arrow, QDoubleSpinBox::up-arrow {
+    width: 0;
+    height: 0;
+    border-left: 4px solid transparent;
+    border-right: 4px solid transparent;
+    border-bottom: 5px solid #00D4FF;
+}
+
+QSpinBox::down-arrow, QDoubleSpinBox::down-arrow {
+    width: 0;
+    height: 0;
+    border-left: 4px solid transparent;
+    border-right: 4px solid transparent;
+    border-top: 5px solid #7B61FF;
+}
+
+/* === 17. CHECKBOXES & RADIO BUTTONS =========================== */
+
+QCheckBox, QRadioButton {
+    color: #B8C0E0;
+    spacing: 8px;
+}
+
+QCheckBox::indicator, QRadioButton::indicator {
+    width: 20px;
+    height: 20px;
+    background: rgba(22, 27, 61, 0.8);
+    border: 2px solid rgba(0, 212, 255, 0.3);
+}
+
+QCheckBox::indicator {
+    border-radius: 4px;
+}
+
+QRadioButton::indicator {
+    border-radius: 10px;
+}
+
+QCheckBox::indicator:checked {
+    background: qlineargradient(x1:0, y1:0, x2:1, y2:1,
+                                stop:0 #00D4FF,
+                                stop:1 #7B61FF);
+    border: 2px solid #00D4FF;
+}
+
+QRadioButton::indicator:checked {
+    background: qradial(cx:0.5, cy:0.5, radius:0.5,
+                       fx:0.5, fy:0.5,
+                       stop:0 #00FF88,
+                       stop:0.7 #00D4FF,
+                       stop:1 transparent);
+    border: 2px solid #00D4FF;
+}
+
+QCheckBox::indicator:hover, QRadioButton::indicator:hover {
+    border: 2px solid rgba(0, 212, 255, 0.6);
+    background: rgba(0, 212, 255, 0.1);
+}
+
+/* === 18. SPLITTERS ============================================ */
+
+QSplitter::handle {
+    background: qlineargradient(x1:0, y1:0, x2:1, y2:0,
+                                stop:0 rgba(0, 212, 255, 0.2),
+                                stop:0.5 rgba(123, 97, 255, 0.2),
+                                stop:1 rgba(0, 212, 255, 0.2));
+    border-radius: 2px;
+}
+
+QSplitter::handle:horizontal {
+    width: 4px;
+}
+
+QSplitter::handle:vertical {
+    height: 4px;
+}
+
+QSplitter::handle:hover {
+    background: qlineargradient(x1:0, y1:0, x2:1, y2:0,
+                                stop:0 rgba(0, 212, 255, 0.5),
+                                stop:0.5 rgba(255, 97, 220, 0.5),
+                                stop:1 rgba(0, 212, 255, 0.5));
+}
+
+/* === 19. DIALOGS ============================================== */
+
+QDialog {
+    background: rgba(10, 14, 39, 0.98);
+    border: 2px solid rgba(0, 212, 255, 0.3);
+    border-radius: 16px;
+}
+
+QDialogButtonBox QPushButton {
+    min-width: 80px;
+    min-height: 32px;
+}
+
+/* === 20. STATUS BAR =========================================== */
+
+QStatusBar {
+    background: rgba(10, 14, 39, 0.9);
+    border-top: 1px solid rgba(0, 212, 255, 0.2);
+    color: #B8C0E0;
+    padding: 4px;
+}
+
+QStatusBar::item {
+    border: none;
+}
+
+QStatusBar QLabel {
+    color: #B8C0E0;
+    padding: 0 8px;
+}
+
+/* === 21. SPECIAL EFFECTS ====================================== */
+
+/* Glow effect for focused elements */
+*:focus {
+    outline: none;
+}
+
+/* Smooth transitions for interactive elements */
+QPushButton, QToolButton, QComboBox,
+QLineEdit, QTextEdit, QPlainTextEdit,
+QListWidget::item, QTableWidget::item,
+QSlider::handle {
+    /* Qt doesn't support transitions, but keeping for documentation */
+}
+
+/* Glass panel effect for main containers */
+QWidget#centralWidget {
+    background: rgba(10, 14, 39, 0.85);
+}
+
+/* Gradient text effect for important headers */
+QLabel#mainTitle {
+    font-size: 28px;
+    font-weight: 800;
+    color: #00D4FF;
+    background: transparent;
+    padding: 16px;
+}
+
+/* === 22. CUSTOM CLASSES ======================================= */
+
+/* For toggle panels */
+QToolButton#togglePanel {
+    min-width: 40px;
+    min-height: 40px;
+    border-radius: 20px;
+    background: rgba(31, 37, 71, 0.8);
+    border: 2px solid rgba(0, 212, 255, 0.3);
+}
+
+QToolButton#togglePanel:checked {
+    background: qlineargradient(x1:0, y1:0, x2:1, y2:1,
+                                stop:0 rgba(0, 212, 255, 0.5),
+                                stop:1 rgba(123, 97, 255, 0.5));
+    border: 2px solid #00D4FF;
+}
+
+/* For file operation buttons */
+QPushButton#fileButton {
+    background: qlineargradient(x1:0, y1:0, x2:1, y2:0,
+                                stop:0 rgba(0, 255, 136, 0.8),
+                                stop:1 rgba(0, 212, 255, 0.8));
+}
+
+QPushButton#fileButton:hover {
+    background: qlineargradient(x1:0, y1:0, x2:1, y2:0,
+                                stop:0 rgba(0, 255, 136, 1),
+                                stop:1 rgba(0, 212, 255, 1));
+}
+
+/* For danger/delete buttons */
+QPushButton#dangerButton {
+    background: qlineargradient(x1:0, y1:0, x2:1, y2:0,
+                                stop:0 rgba(255, 51, 102, 0.8),
+                                stop:1 rgba(255, 97, 220, 0.8));
+}
+
+QPushButton#dangerButton:hover {
+    background: qlineargradient(x1:0, y1:0, x2:1, y2:0,
+                                stop:0 rgba(255, 51, 102, 1),
+                                stop:1 rgba(255, 0, 100, 1));
+}
+
+/* === END OF STYLESHEET ======================================== */
