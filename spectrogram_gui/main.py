@@ -19,6 +19,13 @@ STYLE_SHEET_PATH = os.path.join(
     "style.qss"
 )
 
+# Light theme enhancements (optional)
+LIGHT_STYLE_PATH = os.path.join(
+    os.path.dirname(__file__),
+    "styles",
+    "app_light.qss"
+)
+
 
 def main():
     # 1) Create the QApplication
@@ -37,11 +44,18 @@ def main():
             custom = f.read()
     except Exception:
         custom = ""
+    
+    # 3.5) Load light theme enhancements (optional, non-breaking)
+    try:
+        with open(LIGHT_STYLE_PATH, 'r') as f:
+            light_enhancements = f.read()
+    except Exception:
+        light_enhancements = ""
 
-    # 4) Combine qdarkstyle + our custom QSS
+    # 4) Combine qdarkstyle + our custom QSS + light enhancements
     # If you prefer to use ONLY your own style.qss, replace the next line with:
     #     app.setStyleSheet(custom)
-    app.setStyleSheet(dark + "\n" + custom)
+    app.setStyleSheet(dark + "\n" + custom + "\n" + light_enhancements)
 
     # 5) Instantiate and show the main window
     window = MainWindow()

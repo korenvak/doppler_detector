@@ -119,10 +119,10 @@ class EventAnnotator:
         fname = f"{self.metadata['pixel']}_{timestr}.png"
         snapshot_path = os.path.join(base_dir, fname)
 
-        # build row (with microsecond‐precision and snapshot path)
+        # build row (using local-naive datetime format without microseconds)
         row = {
-            "Start":    f"{start_dt:%Y-%m-%d %H:%M:%S}:{start_dt.microsecond // 100:04d}",
-            "End":      f"{end_dt:%Y-%m-%d %H:%M:%S}:{end_dt.microsecond // 100:04d}",
+            "Start":    start_dt.strftime("%Y-%m-%d %H:%M:%S"),
+            "End":      end_dt.strftime("%Y-%m-%d %H:%M:%S"),
             "Site":     self.metadata["site"],
             "Pixel":    self.metadata["pixel"],
             "Type":     ev_type,

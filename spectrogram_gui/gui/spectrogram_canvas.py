@@ -58,27 +58,31 @@ class AxisViewBox(pg.ViewBox):
 
 class TimeAxisItem(pg.AxisItem):
     """
-    AxisItem that displays times as HH:MM:SS relative to a given start datetime.
+    AxisItem that displays times as YYYY-MM-DD HH:MM:SS based on filename start time.
     """
     def __init__(self, orientation="bottom", **kwargs):
         super().__init__(orientation, **kwargs)
         self.start_dt = None
+        self.end_dt = None
 
-    def set_start_time(self, dt):
+    def set_start_time(self, start_dt, end_dt=None):
         """
         Store the datetime corresponding to times[0] on the X axis.
         """
-        self.start_dt = dt
+        self.start_dt = start_dt
+        self.end_dt = end_dt
 
     def tickStrings(self, values, scale, spacing):
-        # if no start_dt or values aren’t plain floats, fall back to numeric
+        # if no start_dt or values aren't plain floats, fall back to numeric
         if self.start_dt is None or not all(np.isscalar(v) for v in values):
             return [f"{v:.2f}" for v in values]
 
         out = []
         for v in values:
+            # v is in seconds since the start of the file
             t = self.start_dt + timedelta(seconds=float(v))
-            out.append(t.strftime("%H:%M:%S"))
+            # Use full datetime format to avoid confusion
+            out.append(t.strftime("%Y-%m-%d %H:%M:%S"))
         return out
 
 
@@ -194,7 +198,7 @@ class SpectrogramCanvas(QWidget):
             self.plot.addItem(curve)
             self.auto_tracks_items.append(curve)
 
-    def plot_spectrogram(self, freqs, times, Sxx_raw, start_time, maintain_view=False):
+    def plot_spectrogram(self, freqs, times, Sxx_raw, start_time, end_time=None, maintain_view=False):
         """
         Plot the spectrogram image (freqs × times × Sxx_raw),
         then clear any old ALT crosshairs, range selections,
@@ -214,9 +218,10 @@ class SpectrogramCanvas(QWidget):
         # transpose for display
         self.Sxx           = Sxx_raw.T
 
-        # --- 2) Set the reference start time (for TimeAxisItem & hover)
-        self.start_time    = start_time
-        self.axis.set_start_time(start_time)
+        # --- 2) Set the reference start and end times (for TimeAxisItem & hover)
+        self.start_time = start_time
+        self.end_time = end_time
+        self.axis.set_start_time(start_time, end_time)
 
         # --- 3) Compute display levels and LUT
         levels = (np.min(self.Sxx), np.max(self.Sxx))
@@ -271,7 +276,7 @@ class SpectrogramCanvas(QWidget):
             return
         self.colormap_name = cmap_name
         if self.freqs is not None and self.times is not None and self.Sxx_raw is not None:
-            self.plot_spectrogram(self.freqs, self.times, self.Sxx_raw, self.start_time, maintain_view=True)
+            self.plot_spectrogram(self.freqs, self.times, self.Sxx_raw, self.start_time, self.end_time, maintain_view=True)
 
     def get_colormap_lut(self, cmap_name):
         """
@@ -305,7 +310,7 @@ class SpectrogramCanvas(QWidget):
 
         if self.start_time:
             actual_time = self.start_time + timedelta(seconds=float(self.times[time_idx]))
-            time_str = actual_time.strftime("%H:%M:%S")
+            time_str = actual_time.strftime("%Y-%m-%d %H:%M:%S")
         else:
             time_str = f"{self.times[time_idx]:.3f}s"
 
@@ -366,7 +371,7 @@ class SpectrogramCanvas(QWidget):
             freq_hz = self.freqs[freq_idx]
             if self.start_time:
                 actual_time = self.start_time + timedelta(seconds=self.times[time_idx])
-                time_str = actual_time.strftime('%H:%M:%S')
+                time_str = actual_time.strftime('%Y-%m-%d %H:%M:%S')
             else:
                 time_str = f"{self.times[time_idx]:.3f}s"
 
@@ -401,9 +406,10 @@ class SpectrogramCanvas(QWidget):
         self.playback_line.setValue(x)
         self.playback_line.show()
 
-    def set_start_time(self, dt):
-        self.start_time = dt
-        self.axis.set_start_time(dt)
+    def set_start_time(self, start_dt, end_dt=None):
+        self.start_time = start_dt
+        self.end_time = end_dt
+        self.axis.set_start_time(start_dt, end_dt)
 
     def resizeEvent(self, ev):
         super().resizeEvent(ev)

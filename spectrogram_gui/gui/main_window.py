@@ -1,7 +1,7 @@
 import os
 import re
 from pathlib import Path
-from datetime import datetime
+from datetime import datetime, timedelta
 import numpy as np
 
 from PyQt5.QtWidgets import (
@@ -12,7 +12,7 @@ from PyQt5.QtWidgets import (
     QProgressDialog
 )
 from PyQt5.QtGui import QKeySequence
-from PyQt5.QtCore import Qt, pyqtSignal, QSize, QEvent
+from PyQt5.QtCore import Qt, pyqtSignal, QSize, QEvent, QSettings
 
 import qtawesome as qta
 
@@ -28,10 +28,8 @@ from spectrogram_gui.gui.detector_params_dialog import DetectorParamsDialog
 from spectrogram_gui.gui.param_panel import ParamPanel
 from spectrogram_gui.gui.spec_settings_dialog import SpectrogramSettingsDialog
 from spectrogram_gui.utils.audio_utils import load_audio_with_filters
-from spectrogram_gui.utils.spectrogram_utils import (
-    compute_spectrogram,
-    parse_timestamp_from_filename,
-)
+from spectrogram_gui.utils.spectrogram_utils import compute_spectrogram
+from spectrogram_gui.utils.time_parse import parse_times_from_filename
 from spectrogram_gui.utils.auto_detector import DopplerDetector
 from spectrogram_gui.utils.detector_2d import DopplerDetector2D
 from spectrogram_gui.gui.detector_params_dialog_2d import Detector2DParamsDialog
@@ -50,6 +48,7 @@ class FileListWidget(QListWidget):
       - Accepts external drag-drop of .wav/.flac
       - Provides internal drag-drop reordering
       - Emits a signal when Delete is pressed
+      - Supports sorting by name, start time, end time, duration
     """
 
     fileDeleteRequested = pyqtSignal()
@@ -59,7 +58,13 @@ class FileListWidget(QListWidget):
         self.setAcceptDrops(True)
         self.setDragDropMode(QListWidget.InternalMove)
         self.setDefaultDropAction(Qt.MoveAction)
-        self.setSelectionMode(QListWidget.SingleSelection)
+        self.setSelectionMode(QListWidget.ExtendedSelection)  # Enable multi-select
+        
+        # Sorting state
+        self.sort_key = "name"
+        self.sort_ascending = True
+        self.settings = QSettings("SpectrogramGUI", "FileList")
+        self.load_sort_settings()
 
     def keyPressEvent(self, event):
         if event.key() in (Qt.Key_Delete, Qt.Key_Backspace):
@@ -93,6 +98,57 @@ class FileListWidget(QListWidget):
             event.acceptProposedAction()
         else:
             super().dropEvent(event)
+    
+    def load_sort_settings(self):
+        """Load sorting preferences from QSettings."""
+        self.sort_key = self.settings.value("sort_key", "name")
+        self.sort_ascending = self.settings.value("sort_ascending", True, type=bool)
+    
+    def save_sort_settings(self):
+        """Save sorting preferences to QSettings."""
+        self.settings.setValue("sort_key", self.sort_key)
+        self.settings.setValue("sort_ascending", self.sort_ascending)
+    
+    def sort_files(self, key="name", ascending=True):
+        """Sort the file list by the specified key."""
+        from spectrogram_gui.utils.time_parse import parse_times_from_filename
+        
+        self.sort_key = key
+        self.sort_ascending = ascending
+        self.save_sort_settings()
+        
+        # Extract items with their data
+        items = []
+        for i in range(self.count()):
+            item = self.takeItem(0)
+            items.append(item)
+        
+        # Sort based on key
+        def get_sort_value(item):
+            path = item.data(Qt.UserRole)
+            fname = os.path.basename(path)
+            
+            if key == "name":
+                return fname.lower()
+            elif key in ["start_time", "end_time", "duration"]:
+                try:
+                    _, start_dt, end_dt = parse_times_from_filename(fname)
+                    if key == "start_time":
+                        return start_dt
+                    elif key == "end_time":
+                        return end_dt
+                    else:  # duration
+                        return (end_dt - start_dt).total_seconds()
+                except:
+                    # If parsing fails, put at end
+                    return datetime.max if key != "duration" else float('inf')
+            return fname
+        
+        items.sort(key=get_sort_value, reverse=not ascending)
+        
+        # Re-add sorted items
+        for item in items:
+            self.addItem(item)
 
 
 class MainWindow(QMainWindow):
@@ -162,6 +218,9 @@ class MainWindow(QMainWindow):
         self.file_list.fileDeleteRequested.connect(self.remove_selected_file)
         self.file_list.setContextMenuPolicy(Qt.CustomContextMenu)
         self.file_list.customContextMenuRequested.connect(self.on_file_list_context_menu)
+        # Apply saved sort on startup
+        if self.file_list.count() > 0:
+            self.file_list.sort_files(self.file_list.sort_key, self.file_list.sort_ascending)
         self.file_list.setIconSize(QSize(14, 14))
         left_layout.addWidget(self.file_list, 1)
 
@@ -588,24 +647,34 @@ class MainWindow(QMainWindow):
 
         # parse site/pixel with robust fallback
         site = fname[:1] if fname else "?"
+        
+        # Try to parse pixel, start, and end times from filename
         pixel = None
-        for tok in re.split(r"[^0-9]+", fname):
-            if tok.isdigit():
-                try:
-                    pixel = int(tok)
-                    break
-                except ValueError:
-                    pass
-        if pixel is None:
-            pixel = 0
-
-        # parse timestamp from filename or fall back to file modification time
-        timestamp = parse_timestamp_from_filename(path)
-        if timestamp is None:
-            try:
-                timestamp = datetime.fromtimestamp(os.path.getmtime(path))
-            except Exception:
-                timestamp = None
+        start_timestamp = None
+        end_timestamp = None
+        
+        try:
+            # Try the new parser that gets both start and end times
+            pixel_id, start_dt, end_dt = parse_times_from_filename(fname)
+            pixel = pixel_id
+            start_timestamp = start_dt
+            end_timestamp = end_dt
+        except ValueError:
+            # Fall back to old parsing method for pixel
+            for tok in re.split(r"[^0-9]+", fname):
+                if tok.isdigit():
+                    try:
+                        pixel = int(tok)
+                        break
+                    except ValueError:
+                        pass
+            if pixel is None:
+                pixel = 0
+            
+            # For timestamp, avoid using fromtimestamp which can introduce UTC offsets
+            # Just leave as None if we can't parse from filename
+            start_timestamp = None
+            end_timestamp = None
 
         # load audio & spectrogram
         try:
@@ -620,13 +689,13 @@ class MainWindow(QMainWindow):
             QMessageBox.critical(self, "Spectrogram Error", str(e))
             return
 
-        self.canvas.plot_spectrogram(freqs, times, Sxx, timestamp, maintain_view=maintain_view)
+        self.canvas.plot_spectrogram(freqs, times, Sxx, start_timestamp, end_timestamp, maintain_view=maintain_view)
         self.canvas.set_colormap(self.spectrogram_params.get("colormap", "magma"))
-        self.annotator.set_metadata(site=site, pixel=pixel, file_start=timestamp)
+        self.annotator.set_metadata(site=site, pixel=pixel, file_start=start_timestamp)
 
         self.audio_player.load(path)
         self.audio_player.set_position_callback(self.canvas.update_playback_position)
-        self.canvas.set_start_time(timestamp)
+        self.canvas.set_start_time(start_timestamp, end_timestamp)
 
         self.info_label.setText(f"Loaded {fname} — Pixel: {pixel}, Site: {site}")
         self.undo_stack.clear()
@@ -678,60 +747,74 @@ class MainWindow(QMainWindow):
 
     def on_file_list_context_menu(self, pos):
         menu = QMenu(self.file_list)
-        remove_action  = menu.addAction("Remove File")
-        menu.addSeparator()
-        sort_name_asc  = menu.addAction("Sort by Name (A → Z)")
-        sort_name_desc = menu.addAction("Sort by Name (Z → A)")
-        sort_date_asc  = menu.addAction("Sort by Date (Old → New)")
-        sort_date_desc = menu.addAction("Sort by Date (New → Old)")
+        
+        # File operations
+        if self.file_list.currentItem():
+            mark_event_action = menu.addAction("Mark Event")
+            mark_event_action.setIcon(qta.icon('fa5s.map-marker-alt'))
+            remove_action = menu.addAction("Remove from View")
+            remove_action.setIcon(qta.icon('fa5s.trash'))
+            menu.addSeparator()
+        else:
+            mark_event_action = None
+            remove_action = None
+        
+        # Sorting submenu
+        sort_menu = menu.addMenu("Sort by")
+        sort_menu.setIcon(qta.icon('fa5s.sort'))
+        
+        # Add checkable actions for sort criteria
+        sort_actions = []
+        for key, label in [("name", "Name"), ("start_time", "Start Time"), 
+                          ("end_time", "End Time"), ("duration", "Duration")]:
+            action = sort_menu.addAction(label)
+            action.setCheckable(True)
+            action.setChecked(self.file_list.sort_key == key)
+            action.setData(key)
+            sort_actions.append(action)
+        
+        sort_menu.addSeparator()
+        
+        # Ascending/Descending toggle
+        asc_action = sort_menu.addAction("Ascending")
+        asc_action.setCheckable(True)
+        asc_action.setChecked(self.file_list.sort_ascending)
+        desc_action = sort_menu.addAction("Descending")
+        desc_action.setCheckable(True)
+        desc_action.setChecked(not self.file_list.sort_ascending)
+        
+        # Show selected only option
+        if len(self.file_list.selectedItems()) > 1:
+            menu.addSeparator()
+            show_selected_action = menu.addAction("Show Only Selected")
+            show_selected_action.setIcon(qta.icon('fa5s.eye'))
+        else:
+            show_selected_action = None
 
         action = menu.exec_(self.file_list.viewport().mapToGlobal(pos))
+        
         if action == remove_action:
             self.remove_selected_file()
-        elif action == sort_name_asc:
-            self.sort_file_list_by_name(ascending=True)
-        elif action == sort_name_desc:
-            self.sort_file_list_by_name(ascending=False)
-        elif action == sort_date_asc:
-            self.sort_file_list_by_date(ascending=True)
-        elif action == sort_date_desc:
-            self.sort_file_list_by_date(ascending=False)
+        elif action == mark_event_action:
+            self.toggle_mark_event()
+        elif action in sort_actions:
+            key = action.data()
+            self.file_list.sort_files(key, self.file_list.sort_ascending)
+        elif action == asc_action:
+            self.file_list.sort_files(self.file_list.sort_key, True)
+        elif action == desc_action:
+            self.file_list.sort_files(self.file_list.sort_key, False)
+        elif action == show_selected_action:
+            # Keep only selected items
+            selected_items = self.file_list.selectedItems()
+            all_items = []
+            for i in range(self.file_list.count()):
+                item = self.file_list.item(i)
+                if item not in selected_items:
+                    all_items.append(item)
+            for item in all_items:
+                self.file_list.takeItem(self.file_list.row(item))
 
-
-    def sort_file_list_by_name(self, ascending=True):
-        items = []
-        for i in range(self.file_list.count()):
-            item = self.file_list.item(i)
-            name, data = item.text(), item.data(Qt.UserRole)
-            items.append((name.lower(), name, data))
-        items.sort(key=lambda x: x[0], reverse=not ascending)
-
-        self.file_list.clear()
-        for _, name, data in items:
-            new_item = QListWidgetItem(name)
-            new_item.setIcon(qta.icon('fa5s.music'))
-            new_item.setData(Qt.UserRole, data)
-            self.file_list.addItem(new_item)
-
-
-    def sort_file_list_by_date(self, ascending=True):
-        items = []
-        for i in range(self.file_list.count()):
-            item = self.file_list.item(i)
-            name, full = item.text(), item.data(Qt.UserRole)
-            try:
-                ts = os.path.getmtime(full)
-            except Exception:
-                ts = 0
-            items.append((ts, name, full))
-        items.sort(key=lambda x: x[0], reverse=not ascending)
-
-        self.file_list.clear()
-        for _, name, full in items:
-            new_item = QListWidgetItem(name)
-            new_item.setIcon(qta.icon('fa5s.music'))
-            new_item.setData(Qt.UserRole, full)
-            self.file_list.addItem(new_item)
 
 
     def remove_selected_file(self):
