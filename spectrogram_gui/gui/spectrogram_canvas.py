@@ -92,8 +92,8 @@ class TimeAxisItem(pg.AxisItem):
         for v in values:
             # v is in seconds since the start of the file
             t = self.start_dt + timedelta(seconds=float(v))
-            # Use full datetime format to avoid confusion
-            out.append(t.strftime("%Y-%m-%d %H:%M:%S"))
+            # Show only HH:MM:SS on the axis (date goes in CSV only)
+            out.append(t.strftime("%H:%M:%S"))
         return out
 
 
@@ -321,7 +321,7 @@ class SpectrogramCanvas(QWidget):
 
         if self.start_time:
             actual_time = self.start_time + timedelta(seconds=float(self.times[time_idx]))
-            time_str = actual_time.strftime("%Y-%m-%d %H:%M:%S")
+            time_str = actual_time.strftime("%H:%M:%S")
         else:
             time_str = f"{self.times[time_idx]:.3f}s"
 
@@ -382,7 +382,7 @@ class SpectrogramCanvas(QWidget):
             freq_hz = self.freqs[freq_idx]
             if self.start_time:
                 actual_time = self.start_time + timedelta(seconds=self.times[time_idx])
-                time_str = actual_time.strftime('%Y-%m-%d %H:%M:%S')
+                time_str = actual_time.strftime('%H:%M:%S')
             else:
                 time_str = f"{self.times[time_idx]:.3f}s"
 

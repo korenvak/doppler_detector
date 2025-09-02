@@ -37,12 +37,12 @@ def test_iso_variant():
 
 
 def test_ambiguous_date():
-    """Test ambiguous date (both values <= 12), should prefer ISO format."""
+    """Test ambiguous date (both values <= 12), should prefer DD-MM format."""
     name = "pixel - 123 - 2025-03-05 14-30-00 - 2025-03-05 14-45-00"
     px, s, e = parse_times_from_filename(name)
     assert px == 123
-    # Should interpret as March 5th (ISO format MM-DD)
-    assert (s.year, s.month, s.day) == (2025, 3, 5)
+    # Should interpret as May 3rd (DD-MM format) based on user preference
+    assert (s.year, s.month, s.day) == (2025, 5, 3)
     assert (e - s).total_seconds() == 15*60
 
 
@@ -92,6 +92,17 @@ def test_midnight_crossing():
     assert (e - s).total_seconds() == 10*60
 
 
+def test_user_specific_example():
+    """Test the specific example from the user."""
+    name = "pixel - 1567 - 2025-19-08 12-47-45 - 2025-19-08 13-09-53"
+    px, s, e = parse_times_from_filename(name)
+    assert px == 1567
+    assert (s.year, s.month, s.day, s.hour, s.minute, s.second) == (2025, 8, 19, 12, 47, 45)
+    assert (e.year, e.month, e.day, e.hour, e.minute, e.second) == (2025, 8, 19, 13, 9, 53)
+    # Duration should be 22 minutes and 8 seconds = 1328 seconds
+    assert (e - s).total_seconds() == 22*60 + 8
+
+
 if __name__ == "__main__":
     # Run tests manually
     test_functions = [
@@ -101,7 +112,8 @@ if __name__ == "__main__":
         test_invalid_format,
         test_end_before_start,
         test_with_extra_whitespace,
-        test_midnight_crossing
+        test_midnight_crossing,
+        test_user_specific_example
     ]
     
     for test_func in test_functions:
