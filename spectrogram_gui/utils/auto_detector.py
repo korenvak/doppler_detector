@@ -2,9 +2,9 @@ import numpy as np
 import time
 from scipy.signal import find_peaks
 # use your spectrogram and audio‐loading utils instead of soundfile + scipy.spectrogram
-from spectrogram_gui.utils.audio_utils import load_audio_with_filters
-from spectrogram_gui.utils.spectrogram_utils import compute_spectrogram as sg_compute_spec
-from spectrogram_gui.utils.filter_utils import (
+from doppler_detector.spectrogram_gui.utils.audio_utils import load_audio_with_filters
+from doppler_detector.spectrogram_gui.utils.spectrogram_utils import compute_spectrogram as sg_compute_spec
+from doppler_detector.spectrogram_gui.utils.filter_utils import (
     apply_nlms,
     apply_ale_2d_doppler_wave,
     apply_wiener_adaptive,

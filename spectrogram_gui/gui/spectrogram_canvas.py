@@ -8,7 +8,7 @@ import numpy as np
 import matplotlib.cm as cm
 from datetime import timedelta
 
-from spectrogram_gui.gui.range_selector import RangeSelector
+from doppler_detector.spectrogram_gui.gui.range_selector import RangeSelector
 
 
 class AxisViewBox(pg.ViewBox):

@@ -6,7 +6,7 @@ import os
 
 from PyQt5.QtWidgets import QWidget, QHBoxLayout, QPushButton, QSlider, QLabel
 from PyQt5.QtCore import Qt, pyqtSignal, QTimer
-from spectrogram_gui.utils.ffmpeg_utils import convert_to_wav
+from doppler_detector.spectrogram_gui.utils.ffmpeg_utils import convert_to_wav
 import soundfile as sf
 
 

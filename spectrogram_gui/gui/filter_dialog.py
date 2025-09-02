@@ -11,7 +11,7 @@ from PyQt5.QtWidgets import (
 )
 import numpy as np
 from scipy.signal import butter, sosfilt
-from spectrogram_gui.utils.spectrogram_utils import compute_spectrogram
+from doppler_detector.spectrogram_gui.utils.spectrogram_utils import compute_spectrogram
 
 
 class FilterDialog(QDialog):
@@ -105,7 +105,7 @@ class FilterDialog(QDialog):
             new_wave, sr, "", params=self.main.spectrogram_params
         )
         if self.tv_chk.isChecked():
-            from spectrogram_gui.utils.filter_utils import apply_tv_denoising_2d
+            from doppler_detector.spectrogram_gui.utils.filter_utils import apply_tv_denoising_2d
             Sxx = apply_tv_denoising_2d(Sxx, weight=self.tv_weight_spin.value())
         self.main.canvas.plot_spectrogram(freqs, times, Sxx, self.main.canvas.start_time, maintain_view=True)
         self.accept()

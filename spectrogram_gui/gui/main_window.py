@@ -16,23 +16,23 @@ from PyQt5.QtCore import Qt, pyqtSignal, QSize, QEvent, QSettings
 
 import qtawesome as qta
 
-from spectrogram_gui.gui.spectrogram_canvas import SpectrogramCanvas
-from spectrogram_gui.gui.event_annotator import EventAnnotator
-from spectrogram_gui.gui.detection_manager import DetectionManager
-from spectrogram_gui.gui.sound_device_player import SoundDevicePlayer
-from spectrogram_gui.gui.filter_dialog import FilterDialog
-from spectrogram_gui.gui.filters import CombinedFilterDialog
-from spectrogram_gui.gui.fft_stats_dialog import FFTDialog
-from spectrogram_gui.gui.gain_dialog import GainDialog
-from spectrogram_gui.gui.detector_params_dialog import DetectorParamsDialog
-from spectrogram_gui.gui.param_panel import ParamPanel
-from spectrogram_gui.gui.spec_settings_dialog import SpectrogramSettingsDialog
-from spectrogram_gui.utils.audio_utils import load_audio_with_filters
-from spectrogram_gui.utils.spectrogram_utils import compute_spectrogram
-from spectrogram_gui.utils.time_parse import parse_times_from_filename
-from spectrogram_gui.utils.auto_detector import DopplerDetector
-from spectrogram_gui.utils.detector_2d import DopplerDetector2D
-from spectrogram_gui.gui.detector_params_dialog_2d import Detector2DParamsDialog
+from doppler_detector.spectrogram_gui.gui.spectrogram_canvas import SpectrogramCanvas
+from doppler_detector.spectrogram_gui.gui.event_annotator import EventAnnotator
+from doppler_detector.spectrogram_gui.gui.detection_manager import DetectionManager
+from doppler_detector.spectrogram_gui.gui.sound_device_player import SoundDevicePlayer
+from doppler_detector.spectrogram_gui.gui.filter_dialog import FilterDialog
+from doppler_detector.spectrogram_gui.gui.filters import CombinedFilterDialog
+from doppler_detector.spectrogram_gui.gui.fft_stats_dialog import FFTDialog
+from doppler_detector.spectrogram_gui.gui.gain_dialog import GainDialog
+from doppler_detector.spectrogram_gui.gui.detector_params_dialog import DetectorParamsDialog
+from doppler_detector.spectrogram_gui.gui.param_panel import ParamPanel
+from doppler_detector.spectrogram_gui.gui.spec_settings_dialog import SpectrogramSettingsDialog
+from doppler_detector.spectrogram_gui.utils.audio_utils import load_audio_with_filters
+from doppler_detector.spectrogram_gui.utils.spectrogram_utils import compute_spectrogram
+from doppler_detector.spectrogram_gui.utils.time_parse import parse_times_from_filename
+from doppler_detector.spectrogram_gui.utils.auto_detector import DopplerDetector
+from doppler_detector.spectrogram_gui.utils.detector_2d import DopplerDetector2D
+from doppler_detector.spectrogram_gui.gui.detector_params_dialog_2d import Detector2DParamsDialog
 
 # Path to the custom QSS file
 STYLE_SHEET_PATH = os.path.join(
@@ -111,7 +111,7 @@ class FileListWidget(QListWidget):
     
     def sort_files(self, key="name", ascending=True):
         """Sort the file list by the specified key."""
-        from spectrogram_gui.utils.time_parse import parse_times_from_filename
+        from doppler_detector.spectrogram_gui.utils.time_parse import parse_times_from_filename
         
         self.sort_key = key
         self.sort_ascending = ascending
