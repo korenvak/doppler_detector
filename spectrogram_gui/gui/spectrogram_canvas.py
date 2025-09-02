@@ -73,9 +73,20 @@ class TimeAxisItem(pg.AxisItem):
         self.end_dt = end_dt
 
     def tickStrings(self, values, scale, spacing):
-        # if no start_dt or values aren't plain floats, fall back to numeric
+        # if no start_dt or values aren't plain floats, fall back to relative time display
         if self.start_dt is None or not all(np.isscalar(v) for v in values):
-            return [f"{v:.2f}" for v in values]
+            # Show as HH:MM:SS relative time format instead of raw seconds
+            out = []
+            for v in values:
+                try:
+                    total_seconds = float(v)
+                    hours = int(total_seconds // 3600)
+                    minutes = int((total_seconds % 3600) // 60)
+                    seconds = int(total_seconds % 60)
+                    out.append(f"{hours:02d}:{minutes:02d}:{seconds:02d}")
+                except:
+                    out.append(f"{v:.2f}")
+            return out
 
         out = []
         for v in values:

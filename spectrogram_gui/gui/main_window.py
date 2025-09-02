@@ -671,9 +671,11 @@ class MainWindow(QMainWindow):
             if pixel is None:
                 pixel = 0
             
-            # For timestamp, avoid using fromtimestamp which can introduce UTC offsets
-            # Just leave as None if we can't parse from filename
-            start_timestamp = None
+            # For timestamp fallback, use current time as a reasonable default
+            # This allows event marking to work even when filename doesn't match pattern
+            # We use local time to stay consistent with the local-naive approach
+            start_timestamp = datetime.now()
+            # We don't know the actual duration, so we'll set end_timestamp later after loading audio
             end_timestamp = None
 
         # load audio & spectrogram
@@ -688,6 +690,11 @@ class MainWindow(QMainWindow):
         except Exception as e:
             QMessageBox.critical(self, "Spectrogram Error", str(e))
             return
+        
+        # If we don't have an end_timestamp (fallback case), calculate it from audio duration
+        if end_timestamp is None and start_timestamp is not None and len(times) > 0:
+            duration_seconds = times[-1]  # times array goes from 0 to duration
+            end_timestamp = start_timestamp + timedelta(seconds=duration_seconds)
 
         self.canvas.plot_spectrogram(freqs, times, Sxx, start_timestamp, end_timestamp, maintain_view=maintain_view)
         self.canvas.set_colormap(self.spectrogram_params.get("colormap", "magma"))
