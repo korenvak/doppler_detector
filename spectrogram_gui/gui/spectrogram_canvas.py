@@ -1,14 +1,16 @@
 # personal/Koren/spectrogram_gui/gui/spectrogram_canvas.py
 
-from PyQt5.QtWidgets import QWidget, QVBoxLayout, QToolTip, QApplication
-from PyQt5.QtCore import Qt
-from PyQt5.QtGui import QTransform
+from PySide6.QtWidgets import QWidget, QVBoxLayout, QToolTip, QApplication
+from PySide6.QtCore import Qt
+from PySide6.QtGui import QTransform
 import pyqtgraph as pg
 import numpy as np
 import matplotlib.cm as cm
 from datetime import timedelta
 
 from doppler_detector.spectrogram_gui.gui.range_selector import RangeSelector
+from doppler_detector.spectrogram_gui.utils.logger import debug, timer
+from doppler_detector.spectrogram_gui.utils.lod_decimator import LODDecimator, AdaptiveLOD
 
 
 class AxisViewBox(pg.ViewBox):
@@ -126,10 +128,18 @@ class SpectrogramCanvas(QWidget):
         self.plot.setLabel('left', 'Frequency', units='Hz')
         self.plot.setLabel('bottom', 'Time')
 
-        # ImageItem to hold Sxx
+        # ImageItem to hold Sxx - optimized settings
         self.img_item = pg.ImageItem()
         self.img_item.setOpacity(0.9)
+        # Disable auto-levels for performance
+        self.img_item.setOpts(autoLevels=False)
         self.plot.addItem(self.img_item)
+        
+        # Performance optimization flags
+        self.use_opengl = False  # Default to raster for Intel iGPU compatibility
+        self.enable_antialiasing = False  # Disable by default for performance
+        self.lod_decimator = LODDecimator(threshold=50000, max_points=10000)
+        self.adaptive_lod = AdaptiveLOD(target_ppd=2.0)
 
         # Data placeholders
         self.freqs = None
@@ -200,11 +210,15 @@ class SpectrogramCanvas(QWidget):
         for t_arr, f_arr in tracks:
             xs = np.asarray(t_arr, dtype=float)
             ys = np.asarray(f_arr, dtype=float)
+            # Optimize curve rendering
             curve = pg.PlotDataItem(
                 xs, ys,
                 pen=pg.mkPen(width=2, color=(255, 255, 0)),
-                antialias=True,
-                connect='finite'
+                antialias=self.enable_antialiasing,  # Use configurable antialiasing
+                connect='finite',
+                clipToView=True,  # Only render visible portion
+                downsample='auto',  # Enable automatic downsampling
+                downsampleMethod='peak'  # Preserve peaks when downsampling
             )
             self.plot.addItem(curve)
             self.auto_tracks_items.append(curve)
@@ -215,9 +229,10 @@ class SpectrogramCanvas(QWidget):
         then clear any old ALT crosshairs, range selections,
         auto-tracks, and snapshot current arrays for filters/undo.
         """
-        # --- 0) Wipe out any existing auto-detect tracks immediately
-        old_view = self.view_state if maintain_view else None
-        self.clear_auto_tracks()
+        with timer(f"Plotting spectrogram ({len(times)}x{len(freqs)} points)"):
+            # --- 0) Wipe out any existing auto-detect tracks immediately
+            old_view = self.view_state if maintain_view else None
+            self.clear_auto_tracks()
 
         # --- 1) Store the data + snapshots for filters & undo
         self.freqs         = freqs
@@ -234,12 +249,17 @@ class SpectrogramCanvas(QWidget):
         self.end_time = end_time
         self.axis.set_start_time(start_time, end_time)
 
-        # --- 3) Compute display levels and LUT
-        levels = (np.min(self.Sxx), np.max(self.Sxx))
-        lut    = self.get_colormap_lut(self.colormap_name)
+        # --- 3) Compute display levels and LUT - cache for performance
+        with timer("Computing levels and LUT"):
+            # Use percentiles for more robust levels
+            vmin = np.percentile(self.Sxx, 1)
+            vmax = np.percentile(self.Sxx, 99)
+            levels = (vmin, vmax)
+            lut    = self.get_colormap_lut(self.colormap_name)
 
-        # --- 4) Draw the image
-        self.img_item.setImage(self.Sxx, autoLevels=False, levels=levels, lut=lut)
+        # --- 4) Draw the image with optimized settings
+        with timer("Setting image"):
+            self.img_item.setImage(self.Sxx, autoLevels=False, levels=levels, lut=lut)
 
         # --- 5) Scale pixel space to real time/freq axes
         dt = times[1] - times[0] if len(times) > 1 else 1.0
@@ -341,10 +361,14 @@ class SpectrogramCanvas(QWidget):
             self.alt_texts.clear()
 
             v_line = pg.PlotDataItem(
-                [x_time, x_time], [self.freqs[0], y_freq], pen=pg.mkPen('y', width=1)
+                [x_time, x_time], [self.freqs[0], y_freq], 
+                pen=pg.mkPen('y', width=1),
+                antialias=False  # No antialiasing for simple lines
             )
             h_line = pg.PlotDataItem(
-                [self.times[0], x_time], [y_freq, y_freq], pen=pg.mkPen('y', width=1)
+                [self.times[0], x_time], [y_freq, y_freq], 
+                pen=pg.mkPen('y', width=1),
+                antialias=False  # No antialiasing for simple lines
             )
             self.plot.addItem(v_line); self.plot.addItem(h_line)
             self.alt_lines.extend([v_line, h_line])
@@ -398,6 +422,35 @@ class SpectrogramCanvas(QWidget):
             rel_sec = x_time - self.times[0]
             self.click_callback(rel_sec, event)
 
+    def set_performance_mode(self, use_opengl=False, enable_antialiasing=False):
+        """
+        Configure performance settings for rendering.
+        
+        Args:
+            use_opengl: Enable OpenGL acceleration (may not work on all systems)
+            enable_antialiasing: Enable antialiasing (impacts performance)
+        """
+        self.use_opengl = use_opengl
+        self.enable_antialiasing = enable_antialiasing
+        
+        # Apply OpenGL setting
+        if use_opengl:
+            try:
+                import pyqtgraph.opengl as gl
+                debug("Enabling OpenGL acceleration")
+                pg.setConfigOptions(useOpenGL=True)
+            except Exception as e:
+                debug(f"Failed to enable OpenGL: {e}")
+                pg.setConfigOptions(useOpenGL=False)
+        else:
+            debug("Using raster rendering (CPU)")
+            pg.setConfigOptions(useOpenGL=False)
+        
+        # Update existing curves
+        for item in self.auto_tracks_items:
+            if isinstance(item, pg.PlotDataItem):
+                item.setOpts(antialias=enable_antialiasing)
+    
     def clear_annotations(self):
         for item in list(self.plot.items):
             if (

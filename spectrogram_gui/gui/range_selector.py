@@ -1,6 +1,6 @@
 # File: range_selector.py
 
-from PyQt5.QtCore import QObject, pyqtSignal, Qt
+from PySide6.QtCore import QObject, Sig, Signalnal, Qt
 import pyqtgraph as pg
 
 
@@ -9,7 +9,7 @@ class RangeSelector(QObject):
     A helper to let the user drag a vertical region over a pyqtgraph PlotItem
     and emit the corresponding (t_start, t_end) in data coordinates.
     """
-    range_changed = pyqtSignal(float, float)
+    range_changed = Signal(float, float)
 
     def __init__(self, plot_item: pg.PlotItem):
         super().__init__()

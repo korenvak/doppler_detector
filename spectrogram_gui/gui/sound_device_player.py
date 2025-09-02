@@ -4,8 +4,8 @@ import threading
 import time
 import os
 
-from PyQt5.QtWidgets import QWidget, QHBoxLayout, QPushButton, QSlider, QLabel
-from PyQt5.QtCore import Qt, pyqtSignal, QTimer
+from PySide6.QtWidgets import QWidget, QHBoxLayout, QPushButton, QSlider, QLabel
+from PySide6.QtCore import Qt, Sig, Signalnal, QTimer
 from doppler_detector.spectrogram_gui.utils.ffmpeg_utils import convert_to_wav
 import soundfile as sf
 
@@ -16,8 +16,8 @@ class SoundDevicePlayer(QWidget):
     Exposes methods to retrieve and replace the waveform for filtering/FFT/gain.
     """
 
-    prevRequested = pyqtSignal()
-    nextRequested = pyqtSignal()
+    prevRequested = Signal()
+    nextRequested = Signal()
 
     def __init__(self, parent=None):
         super().__init__(parent)

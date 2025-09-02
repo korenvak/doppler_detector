@@ -1,7 +1,7 @@
 import os
 from datetime import datetime
-from PyQt5.QtWidgets import QApplication
-from PyQt5.QtGui import QPixmap
+from PySide6.QtWidgets import QApplication
+from PySide6.QtGui import QPixmap
 
 def save_snapshot(canvas,
                   start_dt: datetime,

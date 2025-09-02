@@ -1,4 +1,4 @@
-from PyQt5.QtWidgets import QDialog, QVBoxLayout, QPushButton
+from PySide6.QtWidgets import QDialog, QVBoxLayout, QPushButton
 import numpy as np
 import pyqtgraph as pg
 

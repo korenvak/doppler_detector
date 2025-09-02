@@ -1,6 +1,6 @@
-from PyQt5.QtWidgets import QDialog, QVBoxLayout, QPushButton, QTableView, QHBoxLayout
-from PyQt5.QtCore import Qt
-from PyQt5.QtGui import QStandardItemModel, QStandardItem
+from PySide6.QtWidgets import QDialog, QVBoxLayout, QPushButton, QTableView, QHBoxLayout
+from PySide6.QtCore import Qt
+from PySide6.QtGui import QStandardItemModel, QStandardItem
 import pandas as pd
 
 class AnnotationEditorDialog(QDialog):

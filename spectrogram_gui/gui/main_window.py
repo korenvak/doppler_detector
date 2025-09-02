@@ -4,15 +4,15 @@ from pathlib import Path
 from datetime import datetime, timedelta
 import numpy as np
 
-from PyQt5.QtWidgets import (
+from PySide6.QtWidgets import (
     QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
     QFileDialog, QPushButton, QLabel, QListWidget, QListWidgetItem,
     QSplitter, QMessageBox, QMenu, QApplication, QFrame,
     QToolButton, QAction, QGraphicsDropShadowEffect, QShortcut,
     QProgressDialog
 )
-from PyQt5.QtGui import QKeySequence
-from PyQt5.QtCore import Qt, pyqtSignal, QSize, QEvent, QSettings
+from PySide6.QtGui import QKeySequence
+from PySide6.QtCore import Qt, Sig, Signalnal, QSize, QEvent, QSettings
 
 import qtawesome as qta
 
@@ -33,6 +33,8 @@ from doppler_detector.spectrogram_gui.utils.time_parse import parse_times_from_f
 from doppler_detector.spectrogram_gui.utils.auto_detector import DopplerDetector
 from doppler_detector.spectrogram_gui.utils.detector_2d import DopplerDetector2D
 from doppler_detector.spectrogram_gui.gui.detector_params_dialog_2d import Detector2DParamsDialog
+from doppler_detector.spectrogram_gui.utils.worker_thread import ThreadPoolManager, AudioLoadWorker, SpectrogramWorker
+from doppler_detector.spectrogram_gui.utils.logger import debug, info, warning, error
 
 # Path to the custom QSS file
 STYLE_SHEET_PATH = os.path.join(
@@ -51,7 +53,7 @@ class FileListWidget(QListWidget):
       - Supports sorting by name, start time, end time, duration
     """
 
-    fileDeleteRequested = pyqtSignal()
+    fileDeleteRequested = Signal()
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -156,6 +158,9 @@ class MainWindow(QMainWindow):
         super().__init__()
         self.setWindowTitle("Spectrogram GUI with Auto-Detect")
         self.resize(1200, 700)
+        
+        # Initialize thread pool for background operations
+        self.thread_pool = ThreadPoolManager(max_threads=2)
 
         # Spectrogram canvas & annotator
         self.canvas = SpectrogramCanvas(self)
@@ -292,7 +297,7 @@ class MainWindow(QMainWindow):
         ]:
             adaptive_menu.addAction(
                 f"{name}…",
-                lambda n=name: CombinedFilterDialog(self, n).exec_(),
+                lambda n=name: CombinedFilterDialog(self, n).exec(),
             )
         filter_menu.addMenu(adaptive_menu)
         self.filter_btn.setMenu(filter_menu)
@@ -431,16 +436,128 @@ class MainWindow(QMainWindow):
         self.csv_path = None
         self.undo_stack = []
 
-        # Undo shortcut
-        QShortcut(QKeySequence("Ctrl+Z"), self).activated.connect(self.perform_undo)
-        QShortcut(QKeySequence(Qt.Key_Left), self).activated.connect(self.load_prev_file)
-        QShortcut(QKeySequence(Qt.Key_Right), self).activated.connect(self.load_next_file)
-        QShortcut(QKeySequence("Ctrl+S"), self).activated.connect(self.open_spectrogram_settings)
-        QShortcut(QKeySequence("Ctrl+Return"), self).activated.connect(self.run_detection)
+        # Keyboard shortcuts
+        self.setup_shortcuts()
 
         # adjust file list height to match spectrogram
         self.update_file_list_height()
 
+    def setup_shortcuts(self):
+        """Set up keyboard shortcuts for the application."""
+        # File operations
+        QShortcut(QKeySequence("Ctrl+O"), self).activated.connect(self.select_files)
+        QShortcut(QKeySequence("Ctrl+Shift+O"), self).activated.connect(self.select_folder)
+        QShortcut(QKeySequence("Delete"), self).activated.connect(self.remove_selected_file)
+        
+        # Navigation
+        QShortcut(QKeySequence(Qt.Key_Left), self).activated.connect(self.load_prev_file)
+        QShortcut(QKeySequence(Qt.Key_Right), self).activated.connect(self.load_next_file)
+        QShortcut(QKeySequence("Alt+Left"), self).activated.connect(self.load_prev_file)
+        QShortcut(QKeySequence("Alt+Right"), self).activated.connect(self.load_next_file)
+        
+        # Playback
+        QShortcut(QKeySequence(Qt.Key_Space), self).activated.connect(self.toggle_playback)
+        
+        # Zoom
+        QShortcut(QKeySequence("Ctrl+="), self).activated.connect(lambda: self.zoom_canvas(1.2))
+        QShortcut(QKeySequence("Ctrl+-"), self).activated.connect(lambda: self.zoom_canvas(0.8))
+        QShortcut(QKeySequence("Ctrl+0"), self).activated.connect(self.reset_zoom)
+        
+        # Tools
+        QShortcut(QKeySequence("Ctrl+S"), self).activated.connect(self.open_spectrogram_settings)
+        QShortcut(QKeySequence("Ctrl+Return"), self).activated.connect(self.run_detection)
+        QShortcut(QKeySequence("Ctrl+M"), self).activated.connect(self.toggle_mark_event)
+        
+        # Edit
+        QShortcut(QKeySequence("Ctrl+Z"), self).activated.connect(self.perform_undo)
+        
+        # Preferences
+        QShortcut(QKeySequence("Ctrl+,"), self).activated.connect(self.open_preferences)
+        
+        # Help
+        QShortcut(QKeySequence("F1"), self).activated.connect(self.show_shortcuts_help)
+    
+    def toggle_playback(self):
+        """Toggle audio playback."""
+        if self.audio_player.playing:
+            self.audio_player.stop()
+        else:
+            self.audio_player.play()
+    
+    def zoom_canvas(self, factor):
+        """Zoom the spectrogram canvas."""
+        if hasattr(self.canvas, 'vb') and self.canvas.vb:
+            xr, yr = self.canvas.vb.viewRange()
+            cx = 0.5 * (xr[0] + xr[1])
+            new_width = (xr[1] - xr[0]) / factor
+            self.canvas.vb.setXRange(cx - new_width/2, cx + new_width/2, padding=0)
+    
+    def reset_zoom(self):
+        """Reset canvas zoom to fit all."""
+        if hasattr(self.canvas, 'vb') and self.canvas.vb:
+            self.canvas.vb.autoRange()
+    
+    def open_preferences(self):
+        """Open preferences dialog."""
+        from doppler_detector.spectrogram_gui.gui.preferences_dialog import PreferencesDialog
+        dialog = PreferencesDialog(self)
+        dialog.settings_changed.connect(self.apply_preferences)
+        dialog.exec()
+    
+    def apply_preferences(self):
+        """Apply preferences from settings."""
+        settings = QSettings("SpectrogramGUI", "Preferences")
+        
+        # Apply performance settings
+        use_opengl = settings.value("performance/opengl", False, type=bool)
+        antialiasing = settings.value("performance/antialiasing", False, type=bool)
+        self.canvas.set_performance_mode(use_opengl, antialiasing)
+        
+        # Apply thread pool settings
+        thread_count = settings.value("performance/thread_count", 2, type=int)
+        self.thread_pool.pool.setMaxThreadCount(thread_count)
+        
+        # Apply theme settings
+        colormap = settings.value("theme/colormap", "magma")
+        self.spectrogram_params["colormap"] = colormap
+        if hasattr(self.canvas, 'set_colormap'):
+            self.canvas.set_colormap(colormap)
+    
+    def show_shortcuts_help(self):
+        """Show keyboard shortcuts help dialog."""
+        shortcuts_text = """
+        <h3>Keyboard Shortcuts</h3>
+        <table>
+        <tr><td><b>File Operations:</b></td><td></td></tr>
+        <tr><td>Ctrl+O</td><td>Open files</td></tr>
+        <tr><td>Ctrl+Shift+O</td><td>Open folder</td></tr>
+        <tr><td>Delete</td><td>Remove selected file</td></tr>
+        <tr><td>&nbsp;</td><td></td></tr>
+        <tr><td><b>Navigation:</b></td><td></td></tr>
+        <tr><td>← / Alt+←</td><td>Previous file</td></tr>
+        <tr><td>→ / Alt+→</td><td>Next file</td></tr>
+        <tr><td>&nbsp;</td><td></td></tr>
+        <tr><td><b>Playback:</b></td><td></td></tr>
+        <tr><td>Space</td><td>Play/Pause</td></tr>
+        <tr><td>&nbsp;</td><td></td></tr>
+        <tr><td><b>Zoom:</b></td><td></td></tr>
+        <tr><td>Ctrl+=</td><td>Zoom in</td></tr>
+        <tr><td>Ctrl+-</td><td>Zoom out</td></tr>
+        <tr><td>Ctrl+0</td><td>Reset zoom</td></tr>
+        <tr><td>&nbsp;</td><td></td></tr>
+        <tr><td><b>Tools:</b></td><td></td></tr>
+        <tr><td>Ctrl+S</td><td>Spectrogram settings</td></tr>
+        <tr><td>Ctrl+Enter</td><td>Run detection</td></tr>
+        <tr><td>Ctrl+M</td><td>Toggle mark event</td></tr>
+        <tr><td>Ctrl+Z</td><td>Undo</td></tr>
+        <tr><td>&nbsp;</td><td></td></tr>
+        <tr><td><b>Other:</b></td><td></td></tr>
+        <tr><td>Ctrl+,</td><td>Preferences</td></tr>
+        <tr><td>F1</td><td>Show this help</td></tr>
+        </table>
+        """
+        QMessageBox.information(self, "Keyboard Shortcuts", shortcuts_text)
+    
     def add_undo_action(self, action):
         self.undo_stack.append(action)
         self.undo_btn.setEnabled(True)
@@ -457,7 +574,7 @@ class MainWindow(QMainWindow):
 
         # 1) Show parameters dialog
         dlg = DetectorParamsDialog(self, detector=self.detector, mode="peaks")
-        if dlg.exec_() != dlg.Accepted:
+        if dlg.exec() != dlg.Accepted:
             return
 
         # 2) If filters have been applied, ask which spectrogram to use
@@ -547,7 +664,7 @@ class MainWindow(QMainWindow):
             return
 
         dlg = Detector2DParamsDialog(self, detector=self.detector2d)
-        if dlg.exec_() != dlg.Accepted:
+        if dlg.exec() != dlg.Accepted:
             return
 
         use_filtered = False
@@ -679,33 +796,25 @@ class MainWindow(QMainWindow):
             # We don't know the actual duration, so we'll set end_timestamp later after loading audio
             end_timestamp = None
 
-        # load audio & spectrogram
-        try:
-            y, sr = load_audio_with_filters(path)
-            freqs, times, Sxx, Sxx_filt = compute_spectrogram(
-                y, sr, path, params=self.spectrogram_params
-            )
-            self.detector.freqs = freqs
-            self.detector.times = times
-            self.detector.Sxx_filt = Sxx_filt
-        except Exception as e:
-            QMessageBox.critical(self, "Spectrogram Error", str(e))
-            return
+        # Show loading progress
+        self.progress = QProgressDialog(f"Loading {fname}...", "Cancel", 0, 100, self)
+        self.progress.setWindowModality(Qt.WindowModal)
+        self.progress.setMinimumDuration(500)  # Only show after 500ms
         
-        # If we don't have an end_timestamp (fallback case), calculate it from audio duration
-        if end_timestamp is None and start_timestamp is not None and len(times) > 0:
-            duration_seconds = times[-1]  # times array goes from 0 to duration
-            end_timestamp = start_timestamp + timedelta(seconds=duration_seconds)
-
-        self.canvas.plot_spectrogram(freqs, times, Sxx, start_timestamp, end_timestamp, maintain_view=maintain_view)
-        self.canvas.set_colormap(self.spectrogram_params.get("colormap", "magma"))
-        self.annotator.set_metadata(site=site, pixel=pixel, file_start=start_timestamp)
-
-        self.audio_player.load(path)
-        self.audio_player.set_position_callback(self.canvas.update_playback_position)
-        self.canvas.set_start_time(start_timestamp, end_timestamp)
-
-        self.info_label.setText(f"Loaded {fname} — Pixel: {pixel}, Site: {site}")
+        # Create and submit audio loading worker
+        audio_worker = AudioLoadWorker(path)
+        audio_worker.signals.progress.connect(self.progress.setValue)
+        audio_worker.signals.result.connect(
+            lambda result: self._on_audio_loaded(result, start_timestamp, end_timestamp, maintain_view)
+        )
+        audio_worker.signals.error.connect(self._on_load_error)
+        audio_worker.signals.finished.connect(lambda: self.progress.close())
+        
+        # Cancel loading if progress dialog is cancelled
+        self.progress.canceled.connect(audio_worker.cancel)
+        
+        # Submit to thread pool
+        self.thread_pool.submit(audio_worker)
         self.undo_stack.clear()
         self.undo_btn.setEnabled(False)
 
@@ -862,7 +971,7 @@ class MainWindow(QMainWindow):
                                 start_time)))
 
         dlg = FilterDialog(self, mode=filter_type)
-        dlg.exec_()
+        dlg.exec()
 
 
     def open_fft_dialog(self):
@@ -873,7 +982,7 @@ class MainWindow(QMainWindow):
             return
 
         dlg = FFTDialog(self)
-        dlg.exec_()
+        dlg.exec()
 
 
     def open_gain_dialog(self):
@@ -896,11 +1005,11 @@ class MainWindow(QMainWindow):
                                 start_time)))
 
         dlg = GainDialog(self)
-        dlg.exec_()
+        dlg.exec()
 
     def open_spectrogram_settings(self):
         dlg = SpectrogramSettingsDialog(self, params=self.spectrogram_params)
-        if dlg.exec_() == dlg.Accepted:
+        if dlg.exec() == dlg.Accepted:
             params = dlg.get_params()
             self.spectrogram_params.update(params)
             if self.current_file:
@@ -937,7 +1046,7 @@ class MainWindow(QMainWindow):
 
     def open_detector_params(self):
         dlg = DetectorParamsDialog(self, detector=self.detector, mode="peaks")
-        dlg.exec_()
+        dlg.exec()
 
     def load_prev_file(self):
         row = self.file_list.currentRow()
@@ -968,30 +1077,84 @@ class MainWindow(QMainWindow):
             self.detection_manager.undo_last(self.canvas)
         if not self.undo_stack:
             self.undo_btn.setEnabled(False)
+    
+    def _on_audio_loaded(self, result, start_timestamp, end_timestamp, maintain_view):
+        """Callback when audio is loaded successfully."""
+        y, sr, path = result
+        fname = os.path.basename(path)
+        
+        info(f"Audio loaded, computing spectrogram for {fname}")
+        
+        # Now compute spectrogram in background
+        spec_worker = SpectrogramWorker(y, sr, path, self.spectrogram_params)
+        spec_worker.signals.progress.connect(lambda v: self.progress.setValue(50 + v//2))
+        spec_worker.signals.result.connect(
+            lambda spec_result: self._on_spectrogram_computed(
+                spec_result, y, sr, path, start_timestamp, end_timestamp, maintain_view
+            )
+        )
+        spec_worker.signals.error.connect(self._on_load_error)
+        
+        self.thread_pool.submit(spec_worker)
+    
+    def _on_spectrogram_computed(self, result, y, sr, path, start_timestamp, end_timestamp, maintain_view):
+        """Callback when spectrogram is computed successfully."""
+        freqs, times, Sxx, _ = result
+        fname = os.path.basename(path)
+        
+        # Update detector
+        self.detector.freqs = freqs
+        self.detector.times = times
+        self.detector.Sxx_filt = Sxx
+        
+        # If we don't have an end_timestamp, calculate it from audio duration
+        if end_timestamp is None and start_timestamp is not None and len(times) > 0:
+            duration_seconds = times[-1]
+            end_timestamp = start_timestamp + timedelta(seconds=duration_seconds)
+        
+        # Parse metadata from filename
+        site = fname[:1] if fname else "?"
+        try:
+            pixel_id, _, _ = parse_times_from_filename(fname)
+            pixel = pixel_id
+        except:
+            pixel = 0
+        
+        # Update UI
+        self.canvas.plot_spectrogram(freqs, times, Sxx, start_timestamp, end_timestamp, maintain_view=maintain_view)
+        self.audio_player.load_audio(y, sr, path)
+        self.canvas.update_playback_position(0)
+        
+        # Update param panel info
+        self.param_panel.update_info(site, pixel, start_timestamp, end_timestamp, path)
+        
+        info(f"Successfully loaded {fname}")
+    
+    def _on_load_error(self, error_tuple):
+        """Callback when loading fails."""
+        exctype, value, tb_str = error_tuple
+        error(f"Failed to load file: {value}")
+        QMessageBox.critical(self, "Loading Error", f"Failed to load file:\n{value}")
 
 
 def main():
     import sys
-    import qdarkstyle
 
     app = QApplication(sys.argv)
 
-    # 1) Load qdarkstyle (base dark theme)
-    dark = qdarkstyle.load_stylesheet_pyqt5()
-
-    # 2) Load our custom style.qss
+    # Load our custom style.qss
     try:
         with open(STYLE_SHEET_PATH, 'r') as f:
             custom = f.read()
     except Exception:
         custom = ""
 
-    # Combine them (qdarkstyle + custom)
-    app.setStyleSheet(dark + "\n" + custom)
+    # Apply custom styles
+    app.setStyleSheet(custom)
 
     window = MainWindow()
     window.show()
-    sys.exit(app.exec_())
+    sys.exit(app.exec())
 
 
 if __name__ == "__main__":

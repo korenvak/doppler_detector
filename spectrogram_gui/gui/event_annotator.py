@@ -1,7 +1,7 @@
 import os
 import pandas as pd
-from PyQt5.QtWidgets import QInputDialog, QLineEdit, QDialog
-from PyQt5.QtCore import Qt, QTimer
+from PySide6.QtWidgets import QInputDialog, QLineEdit, QDialog
+from PySide6.QtCore import Qt, QTimer
 from datetime import timedelta
 import pyqtgraph as pg
 
@@ -142,7 +142,7 @@ class EventAnnotator:
                 print(f"[CSV Error] {e}")
 
             dialog = AnnotationEditorDialog(self.df, parent=None)
-            if dialog.exec_() == QDialog.Accepted:
+            if dialog.exec() == QDialog.Accepted:
                 try:
                     self.df.to_csv(self.csv_path, index=False)
                 except Exception as e:

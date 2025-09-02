@@ -1,6 +1,6 @@
 # File: gain_dialog.py
 
-from PyQt5.QtWidgets import QDialog, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit, QPushButton, QMessageBox
+from PySide6.QtWidgets import QDialog, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit, QPushButton, QMessageBox
 import numpy as np
 from doppler_detector.spectrogram_gui.utils.spectrogram_utils import compute_spectrogram
 

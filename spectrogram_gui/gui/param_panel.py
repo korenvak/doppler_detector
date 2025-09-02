@@ -1,9 +1,9 @@
-from PyQt5.QtWidgets import (
+from PySide6.QtWidgets import (
     QFrame, QHBoxLayout, QVBoxLayout, QLabel, QGroupBox,
     QFormLayout, QComboBox, QSlider
 )
-from PyQt5.QtCore import Qt, QPropertyAnimation
-from PyQt5.QtCore import QTimer
+from PySide6.QtCore import Qt, QPropertyAnimation
+from PySide6.QtCore import QTimer
 
 
 class ParamPanel(QFrame):
